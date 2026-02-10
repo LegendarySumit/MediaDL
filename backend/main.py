@@ -78,7 +78,7 @@ app.add_exception_handler(RateLimitExceeded, lambda req, exc: JSONResponse(
 # Allow frontend to communicate with backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=Config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
