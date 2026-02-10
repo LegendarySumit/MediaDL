@@ -43,7 +43,7 @@ def download_video_with_progress(
     
     sort_spec = quality_map.get(quality, quality_map["720"])
     
-    # Build command with bypass flags for bot detection
+    # Advanced command to bypass YouTube's data-center block
     command = [
         "yt-dlp",
         "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/(bv*+ba/b)",
@@ -51,9 +51,13 @@ def download_video_with_progress(
         "--no-part",
         "--force-overwrites",
         "--no-warnings",
-        "--client-canary", # Helps with bot detection
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "--extractor-args", "youtube:player-client=ios,web,mweb", # Use multiple clients
+        # Use mobile clients which have less aggressive blocking
+        "--extractor-args", "youtube:player-client=ios,tv,mweb",
+        "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "--referer", "https://www.youtube.com/",
+        "--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "--add-header", "Accept-Language: en-us,en;q=0.5",
+        "--client-canary",
     ]
     
     # Setup cookies file if provided
