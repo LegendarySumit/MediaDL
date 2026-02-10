@@ -7,25 +7,26 @@
 
 // Determine API base URL intelligently
 function getApiBase() {
-  // In development: backend is on localhost:8000
-  // In production/Docker: use relative path (handled by nginx reverse proxy)
-  
+  // Check if NEXT_PUBLIC_API_URL is set (recommended for split deployment)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+
   if (typeof window === 'undefined') {
-    // SSR: use relative path
-    return '/api';
+    return 'http://localhost:8001';
   }
   
   const isDev = process.env.NODE_ENV === 'development';
   const hostname = window.location.hostname;
-  const port = window.location.port;
   
-  // Development environment: connect directly to backend on port 8001
-  if (isDev) {
+  // Development environment or local testing
+  if (isDev || hostname === 'localhost' || hostname === '127.0.0.1') {
     return `http://${hostname}:8001`;
   }
   
-  // Production/Docker: use relative path (nginx reverse proxy handles /api -> backend)
-  return '/api';
+  // Production fallback: If no env var, use current origin
+  // In our new Vercel + Render setup, this shouldn't be reached if env var is set
+  return '';
 }
 
 const API_BASE = getApiBase();
@@ -80,14 +81,14 @@ const api = {
   
   // Download management
   startVideo: (url, quality, cookies = "") =>
-    apiFetch('/start/video', {
+    apiFetch('/api/start/video', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ url, quality, cookies })
     }),
   
   startAudio: (url, quality, cookies = "") =>
-    apiFetch('/start/audio', {
+    apiFetch('/api/start/audio', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ url, quality, cookies })
@@ -105,18 +106,18 @@ const api = {
   
   // Download control
   downloadFile: (jobId) => 
-    `${API_BASE}/download/${jobId}`,
+    `${API_BASE}/api/download/${jobId}`,
   
   // Progress streaming
   getProgressStream: (jobId) => 
-    `${API_BASE}/progress/${jobId}`,
+    `${API_BASE}/api/progress/${jobId}`,
   
   // Health
   getHealth: () => 
-    apiFetch('/health').catch(() => ({ status: 'error' })),
+    apiFetch('/api/health').catch(() => ({ status: 'error' })),
   
   getHealthDetailed: () => 
-    apiFetch('/health/detailed').catch(() => ({})),
+    apiFetch('/api/health/detailed').catch(() => ({})),
 };
 
 export default api;

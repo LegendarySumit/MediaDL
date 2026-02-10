@@ -46,8 +46,8 @@ export default function ToolSection({ toolRef }) {
     formData.append("quality", quality);
 
     const endpoint = mode === "video" 
-      ? `${api.getApiBase()}/start/video`
-      : `${api.getApiBase()}/start/audio`;
+      ? `${api.getApiBase()}/api/start/video`
+      : `${api.getApiBase()}/api/start/audio`;
 
     try {
       const res = await fetch(endpoint, { method: "POST", body: formData });

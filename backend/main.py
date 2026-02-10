@@ -27,6 +27,7 @@ from app.services.download_orchestrator import (
 )
 from app.config import Config
 from app.api.history import router as history_router
+from redis_utils import redis_client
 
 # Create logs directory
 os.makedirs(Config.LOG_DIR, exist_ok=True)
@@ -117,7 +118,7 @@ async def shutdown_event():
     logger.info("Shutting down Media Downloader...")
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check(request: Request):
     """Check application health and system status"""
     try:
@@ -164,7 +165,7 @@ async def health_check(request: Request):
         )
 
 
-@app.post("/cleanup")
+@app.post("/api/cleanup")
 async def manual_cleanup(request: Request):
     """Manually trigger storage cleanup"""
     try:
@@ -256,7 +257,7 @@ def validate_url_security(url: str) -> bool:
     
     return True
 
-@app.post("/start/video")
+@app.post("/api/start/video")
 @limiter.limit(f"{Config.VIDEO_REQUESTS_PER_MINUTE}/minute")
 def start_video(
     request: Request,
@@ -333,7 +334,7 @@ def start_video(
         logger.error(f"Unexpected error in start_video: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.post("/start/audio")
+@app.post("/api/start/audio")
 @limiter.limit(f"{Config.AUDIO_REQUESTS_PER_MINUTE}/minute")
 def start_audio(
     request: Request,
@@ -403,7 +404,7 @@ def start_audio(
         logger.error(f"Unexpected error in start_audio: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/progress/{job_id}")
+@app.get("/api/progress/{job_id}")
 def progress_stream(job_id: str):
     """
     Stream progress updates from job state
@@ -485,7 +486,7 @@ def progress_stream(job_id: str):
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
-@app.get("/download/{job_id}")
+@app.get("/api/download/{job_id}")
 def download_file(job_id: str):
     """
     Serve the downloaded file from job state
@@ -580,25 +581,19 @@ def delete_job_endpoint(job_id: str):
         logger.error(f"Delete job error: {e}")
         return {"error": "Internal error"}
 
-@app.get("/health")
-def health_check():
-    """Quick health check (simple liveness probe)"""
+@app.get("/api/health/detailed")
+def health_detailed():
+    """Detailed health check for the frontend"""
+    storage_stats = StorageCleanup.get_storage_stats()
     return {
         "status": "ok",
-        "timestamp": int(time.time())
+        "timestamp": int(time.time()),
+        "storage": storage_stats,
+        "config": {
+            "max_concurrent": Config.MAX_CONCURRENT_DOWNLOADS,
+            "cleanup_days": Config.CLEANUP_DAYS
+        }
     }
-
-
-@app.get("/health/status")
-def health_status():
-    """Detailed health status"""
-    return get_health_status()
-
-
-@app.get("/health/detailed")
-def health_detailed():
-    """Complete system diagnostic"""
-    return get_detailed_status()
 
 
 # ==================== HELPER FUNCTIONS ====================
