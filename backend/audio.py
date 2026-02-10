@@ -45,7 +45,7 @@ def download_audio_with_progress(
     if "youtube.com" in url or "youtu.be" in url:
         command.extend([
             "-f", "bestaudio/best",
-            "--extractor-args", "youtube:player-client=android,web_embedded",
+            "--extractor-args", "youtube:player-client=android,web,web_embedded",
             "--referer", "https://www.youtube.com/",
         ])
     elif "twitter.com" in url or "x.com" in url:
