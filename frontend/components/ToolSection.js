@@ -43,15 +43,14 @@ export default function ToolSection({ toolRef }) {
     formData.append("cookies", "");
 
     const quality = mode === "video" ? videoQuality : audioQuality;
-    formData.append("quality", quality);
-
-    const endpoint = mode === "video" 
-      ? `${api.getApiBase()}/api/start/video`
-      : `${api.getApiBase()}/api/start/audio`;
-
+    
     try {
-      const res = await fetch(endpoint, { method: "POST", body: formData });
-      const data = await res.json();
+      let data;
+      if (mode === "video") {
+        data = await api.startVideo(url, quality);
+      } else {
+        data = await api.startAudio(url, quality);
+      }
 
       if (data.job_id) {
         setJobId(data.job_id);
@@ -61,7 +60,7 @@ export default function ToolSection({ toolRef }) {
         setLoading(false);
       }
     } catch (error) {
-      setErrorMsg("Cannot connect to server. Ensure backend is running.");
+      setErrorMsg(error.message || "Cannot connect to server. Ensure backend is running.");
       setLoading(false);
     }
   };
