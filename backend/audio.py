@@ -45,7 +45,6 @@ def download_audio_with_progress(
         "--referer", "https://www.youtube.com/",
         "--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "--add-header", "Accept-Language: en-us,en;q=0.5",
-        "--client-canary",
     ]
     
     # Setup cookies file if provided
