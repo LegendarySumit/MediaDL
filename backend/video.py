@@ -58,7 +58,7 @@ def download_video_with_progress(
         command.extend([
             "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
             "-S", sort_spec,
-            "--extractor-args", "youtube:player-client=android,web,web_embedded",
+            "--extractor-args", "youtube:player-client=android,web,web_embedded,mweb,ios",
             "--referer", "https://www.youtube.com/",
         ])
     elif "twitter.com" in url or "x.com" in url:
