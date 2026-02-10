@@ -47,6 +47,10 @@ ENV/
 # Production environment (contains secrets)
 backend/.env
 
+# Allow frontend/lib
+!frontend/lib/
+!frontend/lib/**
+
 # Sensitive files
 cookies.txt
 *.cookie

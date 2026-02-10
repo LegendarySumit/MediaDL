@@ -13,7 +13,8 @@ if USE_FAKEREDIS:
 else:
     redis_client = redis.Redis(
         host=REDIS_HOST,
-        port=6379,
+        port=int(os.getenv("REDIS_PORT", "6379")),
+        password=os.getenv("REDIS_PASSWORD", None),
         decode_responses=True,
         socket_connect_timeout=5,
         socket_keepalive=True
