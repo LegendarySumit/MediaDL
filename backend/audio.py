@@ -38,7 +38,8 @@ def download_audio_with_progress(
         "--no-part",
         "--force-overwrites",
         "--no-warnings",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "--no-cache-dir",
+        "--no-check-certificate",
     ]
 
     # Platform-specific optimization
@@ -61,18 +62,16 @@ def download_audio_with_progress(
     # Setup cookies file if provided
     cookies_file = None
     try:
+        # Check for cookies passed from frontend
         if cookies and cookies.strip():
-            # Validate cookies format (basic check)
-            if len(cookies) > 100000:
-                raise ValueError("Cookies too large")
-            
             fd, cookies_file = tempfile.mkstemp(suffix=".txt", prefix="cookies_")
             with os.fdopen(fd, 'w') as f:
                 f.write(cookies)
             command.extend(["--cookies", cookies_file])
         else:
-            # Use default cookies if available
-            default_cookies = os.path.join(os.path.dirname(__file__), "cookies.txt")
+            # Check for local cookies.txt in the backend folder
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            default_cookies = os.path.join(backend_dir, "cookies.txt")
             if os.path.exists(default_cookies):
                 command.extend(["--cookies", default_cookies])
     except Exception as e:
