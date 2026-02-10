@@ -40,14 +40,17 @@ def download_audio_with_progress(
         "--no-warnings",
         "--no-cache-dir",
         "--no-check-certificate",
+        "--verbose",  # Added for debugging
     ]
 
     # Platform-specific optimization
     if "youtube.com" in url or "youtu.be" in url:
         command.extend([
             "-f", "bestaudio/best",
-            "--extractor-args", "youtube:player-client=android,web,web_embedded,mweb,ios",
+            "--extractor-args", "youtube:player-client=ios",
+            "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
             "--referer", "https://www.youtube.com/",
+            "--add-header", "Accept-Language: en-US,en;q=0.9",
         ])
     elif "twitter.com" in url or "x.com" in url:
         command.extend([
@@ -73,7 +76,10 @@ def download_audio_with_progress(
             backend_dir = os.path.dirname(os.path.abspath(__file__))
             default_cookies = os.path.join(backend_dir, "cookies.txt")
             if os.path.exists(default_cookies):
+                print(f"LOG: Loading default cookies from {default_cookies} ({os.path.getsize(default_cookies)} bytes)")
                 command.extend(["--cookies", default_cookies])
+            else:
+                print(f"LOG: No cookies file found at {default_cookies}")
     except Exception as e:
         # Cleanup temp file on validation error
         if cookies_file and os.path.exists(cookies_file):
