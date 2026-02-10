@@ -8,12 +8,12 @@ export default function Footer() {
   const isDark = theme === "dark";
 
   return (
-    <footer className={`transition-colors duration-300 py-16 ${
+    <footer className={`transition-colors duration-300 py-10 xs:py-12 sm:py-16 ${
       isDark
         ? "bg-linear-to-b from-slate-900 to-slate-950 border-t border-slate-700/30"
         : "bg-linear-to-b from-slate-100 to-white border-t border-slate-300"
     }`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-3 xs:px-4 sm:px-6 lg:px-8">
         <motion.div 
           initial="hidden"
           whileInView="visible"
@@ -27,7 +27,7 @@ export default function Footer() {
               },
             },
           }}
-          className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12"
+          className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-6 xs:gap-8 mb-8 xs:mb-10 sm:mb-12"
         >
           {/* Branding Column */}
           <motion.div
@@ -36,16 +36,16 @@ export default function Footer() {
               visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
             }}
           >
-            <div className="text-xl font-black bg-linear-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent mb-3">
+            <div className="text-lg xs:text-xl font-black bg-linear-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent mb-2 xs:mb-3">
               MediaDL
             </div>
-            <p className={`text-sm leading-relaxed ${
+            <p className={`text-xs xs:text-sm leading-relaxed ${
               isDark ? "text-slate-400" : "text-slate-600"
             }`}>
               Download media privately and instantly. No signup, no tracking, just results.
             </p>
             <div className="flex gap-4 mt-4">
-              <a href="#" className={`text-sm transition ${
+              <a href="#" className={`text-xs xs:text-sm transition ${
                 isDark
                   ? "text-slate-500 hover:text-slate-300"
                   : "text-slate-600 hover:text-slate-900"
@@ -62,14 +62,14 @@ export default function Footer() {
               visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
             }}
           >
-            <h4 className={`text-sm font-bold mb-4 uppercase tracking-wider ${
+            <h4 className={`text-xs xs:text-sm font-bold mb-4 uppercase tracking-wider ${
               isDark ? "text-white" : "text-slate-900"
             }`}>Product</h4>
             <ul className="space-y-2">
               <li>
                 <button
                   onClick={() => document.querySelector("#tool-section").scrollIntoView({ behavior: "smooth" })}
-                  className={`text-sm transition-colors ${
+                  className={`text-xs xs:text-sm transition-colors ${
                     isDark
                       ? "text-slate-400 hover:text-white"
                       : "text-slate-600 hover:text-slate-900"
@@ -81,7 +81,7 @@ export default function Footer() {
               <li>
                 <button
                   onClick={() => document.querySelector("#features").scrollIntoView({ behavior: "smooth" })}
-                  className={`text-sm transition-colors ${
+                  className={`text-xs xs:text-sm transition-colors ${
                     isDark
                       ? "text-slate-400 hover:text-white"
                       : "text-slate-600 hover:text-slate-900"
@@ -93,7 +93,7 @@ export default function Footer() {
               <li>
                 <button
                   onClick={() => document.querySelector("#how-it-works").scrollIntoView({ behavior: "smooth" })}
-                  className={`text-sm transition-colors ${
+                  className={`text-xs xs:text-sm transition-colors ${
                     isDark
                       ? "text-slate-400 hover:text-white"
                       : "text-slate-600 hover:text-slate-900"
@@ -112,14 +112,14 @@ export default function Footer() {
               visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
             }}
           >
-            <h4 className={`text-sm font-bold mb-4 uppercase tracking-wider ${
+            <h4 className={`text-xs xs:text-sm font-bold mb-4 uppercase tracking-wider ${
               isDark ? "text-white" : "text-slate-900"
             }`}>Resources</h4>
             <ul className="space-y-2">
               <li>
                 <button
                   onClick={() => document.querySelector("#faq").scrollIntoView({ behavior: "smooth" })}
-                  className={`text-sm transition-colors ${
+                  className={`text-xs xs:text-sm transition-colors ${
                     isDark
                       ? "text-slate-400 hover:text-white"
                       : "text-slate-600 hover:text-slate-900"
@@ -129,7 +129,7 @@ export default function Footer() {
                 </button>
               </li>
               <li>
-                <a href="/history" className={`text-sm transition-colors ${
+                <a href="/history" className={`text-xs xs:text-sm transition-colors ${
                   isDark
                     ? "text-slate-400 hover:text-white"
                     : "text-slate-600 hover:text-slate-900"
@@ -147,7 +147,7 @@ export default function Footer() {
               visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
             }}
           >
-            <h4 className={`text-sm font-bold mb-4 uppercase tracking-wider ${
+            <h4 className={`text-xs xs:text-sm font-bold mb-4 uppercase tracking-wider ${
               isDark ? "text-white" : "text-slate-900"
             }`}>Legal</h4>
             <p className={`text-xs leading-relaxed mb-4 ${

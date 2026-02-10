@@ -132,27 +132,27 @@ export default function ToolSection({ toolRef }) {
   const isUrlValid = url && isValidUrl(url);
 
   return (
-    <section id="tool-section" ref={toolRef} className={`py-20 sm:py-32 px-4 transition-colors duration-300 ${
+    <section id="tool-section" ref={toolRef} className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${
       isDark
         ? "bg-linear-to-b from-slate-950 to-slate-900"
         : "bg-linear-to-b from-slate-50 to-white"
     }`}>
       <div className="max-w-3xl mx-auto">
         {/* Section Header */}
-        <div className="text-center mb-12">
-          <h2 className={`text-4xl sm:text-5xl font-black mb-4 ${
+        <div className="text-center mb-8 xs:mb-12">
+          <h2 className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${
             isDark 
               ? "bg-linear-to-r from-blue-400 to-sky-400 bg-clip-text text-transparent" 
               : "bg-linear-to-r from-blue-600 to-sky-600 bg-clip-text text-transparent"
           }`}>Get Started in 3 Clicks</h2>
-          <p className={`text-lg ${
+          <p className={`text-sm xs:text-base sm:text-lg px-2 ${
             isDark ? "text-slate-400" : "text-slate-600"
           }`}>
             Paste your link below and choose your format. We&apos;ll handle the rest.
           </p>
           <Link 
             href="/history"
-            className={`inline-flex items-center gap-2 mt-6 px-4 py-2 rounded-lg transition text-sm font-medium border ${
+            className={`inline-flex items-center gap-1.5 xs:gap-2 mt-4 xs:mt-6 px-3 xs:px-4 py-1.5 xs:py-2 rounded-lg transition text-xs xs:text-sm font-medium border ${
               isDark
                 ? "bg-slate-800/50 hover:bg-slate-800 text-slate-300 border-slate-700/50 hover:border-slate-600"
                 : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-sm"
@@ -164,25 +164,25 @@ export default function ToolSection({ toolRef }) {
         </div>
 
         {/* Downloader Card */}
-        <div className={`rounded-2xl p-8 shadow-2xl border transition-colors duration-300 ${
+        <div className={`rounded-xl xs:rounded-2xl p-4 xs:p-6 sm:p-8 shadow-2xl border transition-colors duration-300 ${
           isDark
             ? "bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-white border-slate-700/50"
             : "bg-white text-slate-900 border-slate-200 shadow-xl"
         }`}>
           {/* Error Message */}
           {errorMsg && (
-            <div className={`mb-5 p-4 border rounded-lg backdrop-blur-sm animate-fadeIn ${
+            <div className={`mb-4 xs:mb-5 p-3 xs:p-4 border rounded-lg backdrop-blur-sm animate-fadeIn ${
               isDark
                 ? "bg-red-950/50 border-red-700/50"
                 : "bg-red-50 border-red-300"
             }`}>
-              <div className="flex gap-3">
-                <span className="text-2xl">⚠️</span>
+              <div className="flex gap-2 xs:gap-3">
+                <span className="text-xl xs:text-2xl">⚠️</span>
                 <div className="flex-1">
-                  <p className={`text-sm font-semibold mb-1 ${
+                  <p className={`text-xs xs:text-sm font-semibold mb-1 ${
                     isDark ? "text-red-300" : "text-red-700"
                   }`}>Download Failed</p>
-                  <p className={`text-xs ${
+                  <p className={`text-[10px] xs:text-xs ${
                     isDark ? "text-red-200/80" : "text-red-600"
                   }`}>{errorMsg}</p>
                 </div>
@@ -191,13 +191,13 @@ export default function ToolSection({ toolRef }) {
           )}
 
           {/* URL Input */}
-          <div className="space-y-2 mb-5">
-            <label className={`text-xs font-semibold uppercase tracking-wider ${
+          <div className="space-y-1.5 xs:space-y-2 mb-4 xs:mb-5">
+            <label className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${
               isDark ? "text-slate-300" : "text-slate-700"
             }`}>URL to Download</label>
             <div className="relative">
               <input
-                className={`w-full p-3 rounded-lg border transition-all focus:outline-none text-sm backdrop-blur-sm disabled:opacity-50 ${
+                className={`w-full p-2.5 xs:p-3 rounded-lg border transition-all focus:outline-none text-xs xs:text-sm backdrop-blur-sm disabled:opacity-50 ${
                   isDark
                     ? "bg-slate-800/50 text-white placeholder-slate-500"
                     : "bg-slate-50 text-slate-900 placeholder-slate-400"
@@ -262,11 +262,11 @@ export default function ToolSection({ toolRef }) {
           </div>
 
           {/* Quality Selector */}
-          <div className="space-y-3 mb-6">
-            <label className={`text-xs font-semibold uppercase tracking-wider ${
+          <div className="space-y-2 xs:space-y-3 mb-5 xs:mb-6">
+            <label className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${
               isDark ? "text-slate-300" : "text-slate-700"
             }`}>Quality</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-1.5 xs:gap-2">
               {mode === "video" ? (
                 <>
                   {[
@@ -279,7 +279,7 @@ export default function ToolSection({ toolRef }) {
                       key={q.value}
                       onClick={() => setVideoQuality(q.value)}
                       disabled={loading}
-                      className={`p-2 rounded-lg border-2 transition-all text-sm disabled:opacity-50 ${
+                      className={`p-1.5 xs:p-2 rounded-lg border-2 transition-all text-xs xs:text-sm disabled:opacity-50 ${
                         videoQuality === q.value
                           ? isDark
                             ? "bg-blue-600/30 border-blue-500 text-blue-200 font-semibold"
@@ -290,7 +290,7 @@ export default function ToolSection({ toolRef }) {
                       }`}
                     >
                       <div className="font-bold">{q.label}</div>
-                      <div className="text-xs opacity-80">{q.desc}</div>
+                      <div className="text-[10px] xs:text-xs opacity-80">{q.desc}</div>
                     </button>
                   ))}
                 </>
@@ -305,7 +305,7 @@ export default function ToolSection({ toolRef }) {
                       key={q.value}
                       onClick={() => setAudioQuality(q.value)}
                       disabled={loading}
-                      className={`p-2 rounded-lg border-2 transition-all text-sm col-span-1 disabled:opacity-50 ${
+                      className={`p-1.5 xs:p-2 rounded-lg border-2 transition-all text-xs xs:text-sm col-span-1 disabled:opacity-50 ${
                         audioQuality === q.value
                           ? isDark
                             ? "bg-purple-600/30 border-purple-500 text-purple-200 font-semibold"
@@ -316,7 +316,7 @@ export default function ToolSection({ toolRef }) {
                       }`}
                     >
                       <div className="font-bold">{q.label}</div>
-                      <div className="text-xs opacity-80">{q.desc}</div>
+                      <div className="text-[10px] xs:text-xs opacity-80">{q.desc}</div>
                     </button>
                   ))}
                 </>
@@ -328,7 +328,7 @@ export default function ToolSection({ toolRef }) {
           <button
             disabled={loading || !isUrlValid}
             onClick={startDownload}
-            className={`w-full py-4 rounded-lg font-bold transition-all flex items-center justify-center gap-2 mb-5 text-base border-2 ${
+            className={`w-full py-3 xs:py-3.5 sm:py-4 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 xs:gap-2 mb-4 xs:mb-5 text-sm xs:text-base border-2 ${
               loading || !isUrlValid
                 ? isDark
                   ? "bg-slate-700/20 border-slate-600/50 cursor-not-allowed text-slate-400"
@@ -336,27 +336,27 @@ export default function ToolSection({ toolRef }) {
                 : "bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-transparent hover:shadow-lg hover:shadow-blue-600/50 active:scale-95 text-white"
             }`}
           >
-            <span className="text-xl">⬇️</span>
+            <span className="text-lg xs:text-xl">⬇️</span>
             <span>Start Download</span>
           </button>
 
           {/* Loading & Progress Section */}
           {loading && (
-            <div className={`space-y-4 mb-6 p-6 rounded-lg backdrop-blur-sm border ${
+            <div className={`space-y-3 xs:space-y-4 mb-5 xs:mb-6 p-4 xs:p-5 sm:p-6 rounded-lg backdrop-blur-sm border ${
               isDark
                 ? "bg-slate-700/20 border-slate-600/30"
                 : "bg-slate-100 border-slate-300"
             }`}>
               {/* Spinner */}
               <div className="flex justify-center">
-                <svg className="animate-spin h-12 w-12 text-blue-500" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-8 xs:h-10 sm:h-12 w-8 xs:w-10 sm:w-12 text-blue-500" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
               </div>
 
               {/* Status Text */}
-              <div className={`text-center font-semibold text-lg ${
+              <div className={`text-center font-semibold text-sm xs:text-base sm:text-lg ${
                 isDark ? "text-slate-300" : "text-slate-700"
               }`}>
                 {progress > 0 ? "Downloading..." : "Starting download..."}
@@ -364,10 +364,10 @@ export default function ToolSection({ toolRef }) {
 
               {/* Progress Bar */}
               {progress > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
+                <div className="space-y-2 xs:space-y-3">
+                  <div className="flex items-center gap-2 xs:gap-3">
                     <div className="flex-1">
-                      <div className={`w-full h-3 rounded-full overflow-hidden border ${
+                      <div className={`w-full h-2 xs:h-2.5 sm:h-3 rounded-full overflow-hidden border ${
                         isDark
                           ? "bg-slate-700/50 border-slate-600/50"
                           : "bg-slate-200 border-slate-300"
@@ -378,11 +378,11 @@ export default function ToolSection({ toolRef }) {
                         />
                       </div>
                     </div>
-                    <span className={`text-sm font-bold min-w-fit ${
+                    <span className={`text-xs xs:text-sm font-bold min-w-fit ${
                       isDark ? "text-blue-300" : "text-blue-600"
                     }`}>{progress.toFixed(0)}%</span>
                   </div>
-                  <div className="flex justify-between text-xs">
+                  <div className="flex justify-between text-[10px] xs:text-xs">
                     <span className={isDark ? "text-slate-400" : "text-slate-600"}>
                       {progress < 100 ? "Downloading..." : "Complete!"}
                     </span>
@@ -399,37 +399,37 @@ export default function ToolSection({ toolRef }) {
 
           {/* Done Message */}
           {downloadReady && progress >= 100 && fileName && (
-            <div className={`space-y-3 mb-4 p-4 rounded-lg border backdrop-blur-sm animate-fadeIn ${
+            <div className={`space-y-2.5 xs:space-y-3 mb-3 xs:mb-4 p-3 xs:p-4 rounded-lg border backdrop-blur-sm animate-fadeIn ${
               isDark
                 ? "bg-linear-to-br from-green-950/40 to-emerald-950/40 border-green-700/50"
                 : "bg-linear-to-br from-green-50 to-emerald-50 border-green-300"
             }`}>
               <div className="text-center">
-                <div className="text-5xl mb-2 animate-bounce">✅</div>
-                <p className={`font-bold text-base ${
+                <div className="text-3xl xs:text-4xl sm:text-5xl mb-1.5 xs:mb-2 animate-bounce">✅</div>
+                <p className={`font-bold text-sm xs:text-base ${
                   isDark ? "text-green-300" : "text-green-700"
                 }`}>Success!</p>
-                <p className={`text-xs mt-1 ${
+                <p className={`text-[10px] xs:text-xs mt-0.5 xs:mt-1 ${
                   isDark ? "text-green-200/60" : "text-green-600"
                 }`}>Your download is ready</p>
               </div>
               
-              <div className={`rounded-lg p-3 border ${
+              <div className={`rounded-lg p-2.5 xs:p-3 border ${
                 isDark
                   ? "bg-slate-900/50 border-slate-700/50"
                   : "bg-white border-slate-200"
               }`}>
-                <p className={`text-xs mb-1 ${
+                <p className={`text-[10px] xs:text-xs mb-1 ${
                   isDark ? "text-slate-400" : "text-slate-600"
                 }`}>📄 File name:</p>
-                <p className={`text-sm font-mono break-all font-semibold max-h-20 overflow-auto ${
+                <p className={`text-xs xs:text-sm font-mono break-all font-semibold max-h-16 xs:max-h-20 overflow-auto ${
                   isDark ? "text-green-300" : "text-green-700"
                 }`}>{fileName}</p>
               </div>
               
               <button
                 onClick={downloadFile}
-                className="w-full py-3 rounded-lg bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 font-bold text-white transition-all active:scale-95 border border-green-500/30 flex items-center justify-center gap-2 text-sm"
+                className="w-full py-2.5 xs:py-3 rounded-lg bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 font-bold text-white transition-all active:scale-95 border border-green-500/30 flex items-center justify-center gap-1.5 xs:gap-2 text-xs xs:text-sm"
               >
                 <span>📥</span>
                 <span>Download File</span>
@@ -440,7 +440,7 @@ export default function ToolSection({ toolRef }) {
                   setUrl("");
                   resetState();
                 }}
-                className={`w-full py-2 rounded-lg font-semibold text-sm transition-all border ${
+                className={`w-full py-1.5 xs:py-2 rounded-lg font-semibold text-xs xs:text-sm transition-all border ${
                   isDark
                     ? "bg-slate-700/50 hover:bg-slate-700/70 text-slate-200 border-slate-600/50"
                     : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
@@ -452,32 +452,32 @@ export default function ToolSection({ toolRef }) {
           )}
 
           {/* Footer */}
-          <div className={`border-t pt-4 mt-6 ${
+          <div className={`border-t pt-3 xs:pt-4 mt-4 xs:mt-6 ${
             isDark ? "border-slate-700/50" : "border-slate-200"
           }`}>
-            <div className={`grid grid-cols-3 gap-3 text-center text-xs mb-3 ${
+            <div className={`grid grid-cols-3 gap-2 xs:gap-3 text-center text-[10px] xs:text-xs mb-2 xs:mb-3 ${
               isDark ? "text-slate-400" : "text-slate-600"
             }`}>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-lg">⚡</span>
+              <div className="flex flex-col items-center gap-0.5 xs:gap-1">
+                <span className="text-base xs:text-lg">⚡</span>
                 <span className={`font-semibold ${
                   isDark ? "text-slate-300" : "text-slate-700"
                 }`}>Fast</span>
               </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-lg">🔒</span>
+              <div className="flex flex-col items-center gap-0.5 xs:gap-1">
+                <span className="text-base xs:text-lg">🔒</span>
                 <span className={`font-semibold ${
                   isDark ? "text-slate-300" : "text-slate-700"
                 }`}>Secure</span>
               </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-lg">✨</span>
+              <div className="flex flex-col items-center gap-0.5 xs:gap-1">
+                <span className="text-base xs:text-lg">✨</span>
                 <span className={`font-semibold ${
                   isDark ? "text-slate-300" : "text-slate-700"
                 }`}>Free</span>
               </div>
             </div>
-            <p className={`text-xs text-center ${
+            <p className={`text-[10px] xs:text-xs text-center ${
               isDark ? "text-slate-500" : "text-slate-500"
             }`}>No signups needed • Downloads processed locally</p>
           </div>

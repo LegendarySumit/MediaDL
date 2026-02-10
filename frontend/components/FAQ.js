@@ -43,20 +43,20 @@ export default function FAQ() {
   ];
 
   return (
-    <section id="faq" className={`py-20 sm:py-32 px-4 transition-colors duration-300 ${
+    <section id="faq" className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${
       isDark
         ? "bg-linear-to-b from-slate-900 to-slate-950"
         : "bg-linear-to-b from-slate-50 to-white"
     }`}>
       <div className="max-w-3xl mx-auto">
         {/* Section Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10 xs:mb-12 sm:mb-16">
           <motion.h2 
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
             viewport={{ once: true }}
-            className={`text-4xl sm:text-5xl font-black mb-4 ${
+            className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${
               isDark 
                 ? "bg-linear-to-r from-pink-400 to-rose-400 bg-clip-text text-transparent" 
                 : "bg-linear-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent"
@@ -69,7 +69,7 @@ export default function FAQ() {
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
             viewport={{ once: true }}
-            className={`text-lg ${
+            className={`text-sm xs:text-base sm:text-lg px-2 ${
               isDark ? "text-slate-400" : "text-slate-600"
             }`}
           >
@@ -91,7 +91,7 @@ export default function FAQ() {
               },
             },
           }}
-          className="space-y-4"
+          className="space-y-3 xs:space-y-4"
         >
           {faqs.map((faq, idx) => (
             <motion.div
@@ -109,13 +109,13 @@ export default function FAQ() {
               {/* Question */}
               <motion.button
                 onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
-                className={`w-full px-6 py-4 flex items-center justify-between transition-colors ${
+                className={`w-full px-4 xs:px-5 sm:px-6 py-3 xs:py-4 flex items-center justify-between transition-colors ${
                   isDark
                     ? "hover:bg-slate-800/50"
                     : "hover:bg-white/40"
                 }`}
               >
-                <span className={`text-left font-semibold text-lg ${
+                <span className={`text-left font-semibold text-sm xs:text-base sm:text-lg pr-3 ${
                   isDark ? "text-white" : "text-slate-900"
                 }`}>
                   {faq.question}
@@ -123,7 +123,7 @@ export default function FAQ() {
                 <motion.span
                   animate={{ rotate: openIndex === idx ? 180 : 0 }}
                   transition={{ duration: 0.3, ease: "easeOut" }}
-                  className={`text-xl origin-center ${
+                  className={`text-base xs:text-lg sm:text-xl origin-center flex-shrink-0 ${
                     isDark ? "text-pink-400" : "text-pink-600"
                   }`}
                 >
@@ -145,8 +145,8 @@ export default function FAQ() {
                         : "border-pink-300/50 bg-white/40"
                     }`}
                   >
-                    <div className="px-6 py-4">
-                      <p className={`leading-relaxed text-sm sm:text-base ${
+                    <div className="px-4 xs:px-5 sm:px-6 py-3 xs:py-4">
+                      <p className={`leading-relaxed text-xs xs:text-sm sm:text-base ${
                         isDark ? "text-slate-300" : "text-slate-700"
                       }`}>
                         {faq.answer}

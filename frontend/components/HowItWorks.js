@@ -31,7 +31,7 @@ export default function HowItWorks() {
   return (
     <section
       id="how-it-works"
-      className={`py-20 sm:py-32 px-4 transition-colors duration-300 ${
+      className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${
         isDark
           ? "bg-linear-to-b from-slate-950 to-slate-900"
           : "bg-linear-to-b from-white to-slate-50"
@@ -39,13 +39,13 @@ export default function HowItWorks() {
     >
       <div className="max-w-5xl mx-auto">
         {/* Section Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10 xs:mb-12 sm:mb-16">
           <motion.h2 
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
             viewport={{ once: true }}
-            className={`text-4xl sm:text-5xl font-black mb-4 ${
+            className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${
               isDark 
                 ? "bg-linear-to-r from-purple-400 to-indigo-400 bg-clip-text text-transparent" 
                 : "bg-linear-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent"
@@ -58,7 +58,7 @@ export default function HowItWorks() {
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
             viewport={{ once: true }}
-            className={`text-lg ${
+            className={`text-sm xs:text-base sm:text-lg px-2 ${
               isDark ? "text-slate-400" : "text-slate-600"
             }`}
           >
@@ -82,7 +82,7 @@ export default function HowItWorks() {
                 },
               },
             }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+            className="grid grid-cols-1 sm:grid-cols-3 gap-5 xs:gap-6 sm:gap-8"
           >
             {steps.map((step, idx) => (
               <motion.div 
@@ -96,7 +96,7 @@ export default function HowItWorks() {
                 {/* Step Card */}
                 <motion.div 
                   whileHover={{ y: -8, transition: { duration: 0.3 } }}
-                  className={`p-8 rounded-xl transition-all duration-300 text-center ${
+                  className={`p-5 xs:p-6 sm:p-8 rounded-xl transition-all duration-300 text-center ${
                     isDark
                       ? "bg-slate-800/20 border border-indigo-500/20 hover:border-indigo-500/40 hover:bg-slate-800/40 hover:shadow-lg hover:shadow-indigo-500/10"
                       : "bg-white/60 border border-indigo-300/30 hover:border-indigo-400/50 hover:bg-white/80 hover:shadow-lg hover:shadow-indigo-200/30"
@@ -106,21 +106,21 @@ export default function HowItWorks() {
                   <motion.div 
                     whileHover={{ scale: 1.15, rotate: 5 }}
                     transition={{ duration: 0.3 }}
-                    className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-linear-to-r from-indigo-600 to-purple-600 text-white font-black text-2xl mb-4 shadow-lg shadow-indigo-600/30"
+                    className="inline-flex items-center justify-center w-12 xs:w-14 sm:w-16 h-12 xs:h-14 sm:h-16 rounded-full bg-linear-to-r from-indigo-600 to-purple-600 text-white font-black text-lg xs:text-xl sm:text-2xl mb-3 xs:mb-4 shadow-lg shadow-indigo-600/30"
                   >
                     {step.number}
                   </motion.div>
 
                   {/* Icon */}
-                  <div className="text-5xl mb-4">{step.icon}</div>
+                  <div className="text-3xl xs:text-4xl sm:text-5xl mb-3 xs:mb-4">{step.icon}</div>
 
                   {/* Title */}
-                  <h3 className={`text-xl font-bold mb-3 ${
+                  <h3 className={`text-base xs:text-lg sm:text-xl font-bold mb-2 xs:mb-3 ${
                     isDark ? "text-white" : "text-slate-900"
                   }`}>{step.title}</h3>
 
                   {/* Description */}
-                  <p className={`text-sm leading-relaxed ${
+                  <p className={`text-xs xs:text-sm leading-relaxed ${
                     isDark ? "text-slate-400" : "text-slate-600"
                   }`}>{step.description}</p>
                 </motion.div>
