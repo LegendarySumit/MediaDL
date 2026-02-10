@@ -32,16 +32,16 @@ def download_audio_with_progress(
     
     output_template = os.path.join(downloads_dir, "audio_%(id)s.%(ext)s")
     
-    # Build command - download best audio without conversion
-    # Uses bestaudio format which is fastest (no transcoding)
+    # Build command with bypass flags for bot detection
     command = [
         "yt-dlp",
-        "-f", "bestaudio",  # Best audio in native format (fastest)
+        "-f", "bestaudio",
         "--no-part",
-        "--force-overwrites",  # Overwrite if exists
+        "--force-overwrites",
         "--no-warnings",
-        "--js-runtimes", "node",  # YouTube extraction requires JS runtime
-        "--remote-components", "ejs:github",  # Enable challenge solver for YouTube
+        "--client-canary",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "--extractor-args", "youtube:player-client=ios,web,mweb",
     ]
     
     # Setup cookies file if provided

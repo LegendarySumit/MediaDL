@@ -43,17 +43,17 @@ def download_video_with_progress(
     
     sort_spec = quality_map.get(quality, quality_map["720"])
     
-    # Build command with proper format and quality selection
-    # Combines video+audio with proper quality filtering
+    # Build command with bypass flags for bot detection
     command = [
         "yt-dlp",
-        "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/(bv*+ba/b)",  # Video+audio or best
-        "-S", sort_spec,  # Sort by resolution
-        "--no-part",  # Don't create .part files
-        "--force-overwrites",  # Overwrite if exists
-        "--no-warnings",  # Suppress warnings
-        "--js-runtimes", "node",  # YouTube extraction requires JS runtime
-        "--remote-components", "ejs:github",  # Enable challenge solver for YouTube
+        "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/(bv*+ba/b)",
+        "-S", sort_spec,
+        "--no-part",
+        "--force-overwrites",
+        "--no-warnings",
+        "--client-canary", # Helps with bot detection
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "--extractor-args", "youtube:player-client=ios,web,mweb", # Use multiple clients
     ]
     
     # Setup cookies file if provided
