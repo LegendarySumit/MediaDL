@@ -86,8 +86,9 @@ def download_video_with_progress(
     
     process = None
     output_file = None
+    stderr_content = []
     try:
-        # Start process with stderr separate to capture progress
+        # Start process with stderr separate to capture progress and errors
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -100,6 +101,7 @@ def download_video_with_progress(
             if not line:
                 break
             
+            stderr_content.append(line)
             # Extract progress percentage from download lines
             match = re.search(r'(\d+\.\d)%', line)
             if match:
@@ -112,18 +114,18 @@ def download_video_with_progress(
         # Wait for process to complete
         process.wait()
         
-        # Find the downloaded file - check what was actually created
+        # If process failed, report detailed error
+        if process.returncode != 0:
+            error_details = "".join(stderr_content[-10:]) # last 10 lines
+            raise Exception(f"yt-dlp failed (code {process.returncode}): {error_details}")
+        
+        # Find the downloaded file
         video_files = glob.glob(os.path.join(downloads_dir, "video_*.mp4"))
         if video_files:
-            # Sort by modification time, get the most recent
             output_file = max(video_files, key=lambda x: os.path.getmtime(x))
             return output_file
         
-        # If process failed, report error
-        if process.returncode != 0:
-            raise Exception(f"yt-dlp failed with code {process.returncode}")
-        
-        raise Exception("No video file generated")
+        raise Exception("No video file generated - check if the link is correct or platform is supported")
     
     except Exception as e:
         # Cleanup process if still running

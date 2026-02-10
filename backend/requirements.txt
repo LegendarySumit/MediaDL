@@ -8,3 +8,4 @@ pydantic>=2.0
 pydantic-settings>=2.0
 slowapi==0.1.9
 python-dotenv==1.0.0
+static-ffmpeg==2.5.241

@@ -50,9 +50,9 @@ class Config:
     
     # API settings
     API_HOST = os.getenv("API_HOST", "0.0.0.0")
-    API_PORT = int(os.getenv("API_PORT", "8001"))  # Changed from 8000 to 8001
+    API_PORT = int(os.getenv("API_PORT", "8001"))
     API_RELOAD = os.getenv("API_RELOAD", "false").lower() == "true"
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "https://media-dl.vercel.app,http://localhost:3000,*").split(",")
     
     # Rate Limiting
     RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"

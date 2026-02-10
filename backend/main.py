@@ -11,6 +11,16 @@ import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
+# Initialize static-ffmpeg for Render (provides ffmpeg binaries)
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+    logging.info("static-ffmpeg initialized successfully")
+except ImportError:
+    logging.warning("static-ffmpeg not installed, relying on system ffmpeg")
+except Exception as e:
+    logging.error(f"Error initializing static-ffmpeg: {e}")
+
 from detector import detect_platform
 from app.services.jobs import (
     create_job, update_job, get_job, delete_job, 
@@ -47,12 +57,18 @@ app.add_exception_handler(RateLimitExceeded, lambda req, exc: JSONResponse(
 ))
 
 # Allow frontend to communicate with backend
+# Handle CORS specifically for Vercel and local dev
+origins = [o.strip() for o in Config.CORS_ORIGINS if o.strip()]
+if "*" in origins and len(origins) > 1:
+    origins.remove("*") # Prefer specific origins if provided
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=Config.CORS_ORIGINS,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Root endpoints (for Render health checks)
