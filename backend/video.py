@@ -44,6 +44,7 @@ def download_video_with_progress(
     sort_spec = quality_map.get(quality, quality_map["720"])
     
     # Advanced command to bypass YouTube's data-center block
+    # Using 'android_embedded' and 'tv' clients which are least likely to be blocked
     command = [
         "yt-dlp",
         "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/(bv*+ba/b)",
@@ -51,9 +52,8 @@ def download_video_with_progress(
         "--no-part",
         "--force-overwrites",
         "--no-warnings",
-        # Use mobile clients which have less aggressive blocking
-        "--extractor-args", "youtube:player-client=ios,tv,mweb",
-        "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "--extractor-args", "youtube:player-client=android_embedded,web_embedded,tv,ios",
+        "--user-agent", "Mozilla/5.0 (Android 14; Mobile; rv:109.0) Gecko/114.0 Firefox/114.0",
         "--referer", "https://www.youtube.com/",
         "--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "--add-header", "Accept-Language: en-us,en;q=0.5",
