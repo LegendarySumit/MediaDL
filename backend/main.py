@@ -57,18 +57,12 @@ app.add_exception_handler(RateLimitExceeded, lambda req, exc: JSONResponse(
 ))
 
 # Allow frontend to communicate with backend
-# Handle CORS specifically for Vercel and local dev
-origins = [o.strip() for o in Config.CORS_ORIGINS if o.strip()]
-if "*" in origins and len(origins) > 1:
-    origins.remove("*") # Prefer specific origins if provided
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["https://media-dl.vercel.app", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 # Root endpoints (for Render health checks)
