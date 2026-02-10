@@ -43,17 +43,35 @@ def download_video_with_progress(
     
     sort_spec = quality_map.get(quality, quality_map["720"])
     
-    # Final aggressive bypass attempt
+    # Base commands
     command = [
         "yt-dlp",
-        "-f", "best", # Try the single pre-merged file to avoid complex manifest checks
         "--no-part",
         "--force-overwrites",
         "--no-warnings",
-        "--extractor-args", "youtube:player-client=web_embedded,mweb,mediaconnect,ios",
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "--referer", "https://www.youtube.com/",
     ]
+
+    # Platform-specific optimization
+    if "youtube.com" in url or "youtu.be" in url:
+        # YouTube specific bypasses
+        command.extend([
+            "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
+            "-S", sort_spec,
+            "--extractor-args", "youtube:player-client=android,web_embedded",
+            "--referer", "https://www.youtube.com/",
+        ])
+    elif "twitter.com" in url or "x.com" in url:
+        # Twitter specific
+        command.extend([
+            "-f", "best",
+            "--referer", "https://twitter.com/",
+        ])
+    else:
+        # Default for Insta, TikTok, etc.
+        command.extend([
+            "-f", "best",
+        ])
     
     # Setup cookies file if provided
     cookies_file = None

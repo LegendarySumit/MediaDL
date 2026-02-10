@@ -32,17 +32,31 @@ def download_audio_with_progress(
     
     output_template = os.path.join(downloads_dir, "audio_%(id)s.%(ext)s")
     
-    # Final aggressive bypass attempt
+    # Base commands
     command = [
         "yt-dlp",
-        "-f", "bestaudio/best",
         "--no-part",
         "--force-overwrites",
         "--no-warnings",
-        "--extractor-args", "youtube:player-client=web_embedded,mweb,mediaconnect,ios",
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "--referer", "https://www.youtube.com/",
     ]
+
+    # Platform-specific optimization
+    if "youtube.com" in url or "youtu.be" in url:
+        command.extend([
+            "-f", "bestaudio/best",
+            "--extractor-args", "youtube:player-client=android,web_embedded",
+            "--referer", "https://www.youtube.com/",
+        ])
+    elif "twitter.com" in url or "x.com" in url:
+        command.extend([
+            "-f", "bestaudio/best",
+            "--referer", "https://twitter.com/",
+        ])
+    else:
+        command.extend([
+            "-f", "bestaudio/best",
+        ])
     
     # Setup cookies file if provided
     cookies_file = None
