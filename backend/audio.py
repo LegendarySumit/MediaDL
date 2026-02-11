@@ -33,7 +33,7 @@ def download_audio_with_progress(
     output_template = os.path.join(downloads_dir, "audio_%(id)s.%(ext)s")
     
     # Base commands
-    command = [
+    base_command = [
         "yt-dlp",
         "--no-part",
         "--force-overwrites",
@@ -43,25 +43,51 @@ def download_audio_with_progress(
         "--verbose",  # Added for debugging
     ]
 
+    # Define download strategies
+    strategies = []
+    
     # Platform-specific optimization
     if "youtube.com" in url or "youtu.be" in url:
-        # YouTube datacenter fix: Force 'web' client (standard browser).
-        # Mobile clients (ios, android, android_vr) are blocked on datacenter IPs.
-        command.extend([
-            "-f", "bestaudio/best",
-            "--extractor-args", "youtube:player-client=web",
-        ])
+        # Strategy 1: YouTube datacenter fix with Web client
+        strategies.append({
+            "name": "YouTube Web Client",
+            "args": [
+                "-f", "bestaudio/best",
+                "--extractor-args", "youtube:player-client=web",
+            ]
+        })
+        # Strategy 2: Standard client (often Android)
+        strategies.append({
+            "name": "YouTube Default Client",
+            "args": [
+                "-f", "bestaudio/best",
+            ]
+        })
+        # Strategy 3: Fallback
+        strategies.append({
+            "name": "YouTube Fallback",
+            "args": [
+                "-f", "best", # Might download video, but usually acceptable fallback
+            ]
+        })
     elif "twitter.com" in url or "x.com" in url:
-        command.extend([
-            "-f", "bestaudio/best",
-            "--referer", "https://twitter.com/",
-        ])
+        strategies.append({
+            "name": "Twitter",
+            "args": [
+                "-f", "bestaudio/best",
+                "--referer", "https://twitter.com/",
+            ]
+        })
     else:
-        command.extend([
-            "-f", "bestaudio/best",
-        ])
+        strategies.append({
+            "name": "Generic",
+            "args": [
+                "-f", "bestaudio/best",
+            ]
+        })
     
     # Setup cookies file if provided
+    cookies_args = []
     cookies_file = None
     try:
         # Check for cookies passed from frontend
@@ -69,14 +95,14 @@ def download_audio_with_progress(
             fd, cookies_file = tempfile.mkstemp(suffix=".txt", prefix="cookies_")
             with os.fdopen(fd, 'w') as f:
                 f.write(cookies)
-            command.extend(["--cookies", cookies_file])
+            cookies_args = ["--cookies", cookies_file]
         else:
             # Check for local cookies.txt in the backend folder
             backend_dir = os.path.dirname(os.path.abspath(__file__))
             default_cookies = os.path.join(backend_dir, "cookies.txt")
             if os.path.exists(default_cookies):
                 print(f"LOG: Loading default cookies from {default_cookies} ({os.path.getsize(default_cookies)} bytes)")
-                command.extend(["--cookies", default_cookies])
+                cookies_args = ["--cookies", default_cookies]
             else:
                 print(f"LOG: No cookies file found at {default_cookies}")
     except Exception as e:
@@ -88,69 +114,85 @@ def download_audio_with_progress(
                 pass
         raise ValueError(f"Invalid cookies: {e}")
     
-    command.extend([url, "-o", output_template])
-    
+    last_error = None
     process = None
     output_file = None
+    
     try:
-        # Start process with stderr separate to capture progress
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        assert process.stderr is not None  # guaranteed by stderr=PIPE
-        
-        # Read stderr for progress updates in real-time
-        for line in iter(process.stderr.readline, ''):
-            if not line:
-                break
+        for strategy in strategies:
+            print(f"LOG: Attempting download with strategy: {strategy['name']}")
+            command = base_command + strategy["args"] + cookies_args + [url, "-o", output_template]
             
-            # Extract progress percentage from download lines
-            match = re.search(r'(\d+\.\d)%', line)
-            if match:
-                try:
-                    progress_pct = float(match.group(1))
-                    progress_callback(progress_pct)
-                except (ValueError, Exception):
-                    pass
-        
-        # Wait for process to complete
-        process.wait()
-        
-        # Find the downloaded file - any audio format
-        # yt-dlp bestaudio typically outputs m4a or webm
-        audio_files = (
-            glob.glob(os.path.join(downloads_dir, "audio_*.m4a")) +
-            glob.glob(os.path.join(downloads_dir, "audio_*.webm")) +
-            glob.glob(os.path.join(downloads_dir, "audio_*.opus")) +
-            glob.glob(os.path.join(downloads_dir, "audio_*.mp3"))
-        )
-        
-        if audio_files:
-            # Sort by modification time, get the most recent
-            output_file = max(audio_files, key=lambda x: os.path.getmtime(x))
-            return output_file
-        
-        # If process failed, report error with details
-        if process.returncode != 0:
-            # Collect any remaining stderr
-            remaining = process.stderr.read() if process.stderr else ""
-            raise Exception(f"yt-dlp failed with code {process.returncode}: {remaining[-500:]}")
-        
-        raise Exception("No audio file generated")
-    
-    except Exception as e:
-        # Cleanup process if still running
-        if process and process.poll() is None:
+            stderr_content = []
             try:
-                process.kill()
-                process.wait(timeout=5)
-            except:
-                pass
-        raise
-    
+                # Start process with stderr separate to capture progress
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                assert process.stderr is not None  # guaranteed by stderr=PIPE
+                
+                # Read stderr for progress updates in real-time
+                for line in iter(process.stderr.readline, ''):
+                    if not line:
+                        break
+                    
+                    stderr_content.append(line)
+                    # Extract progress percentage from download lines
+                    match = re.search(r'(\d+\.\d)%', line)
+                    if match:
+                        try:
+                            progress_pct = float(match.group(1))
+                            progress_callback(progress_pct)
+                        except (ValueError, Exception):
+                            pass
+                
+                # Wait for process to complete
+                process.wait()
+                
+                 # Find the downloaded file - any audio format
+                # yt-dlp bestaudio typically outputs m4a or webm
+                audio_files = (
+                    glob.glob(os.path.join(downloads_dir, "audio_*.m4a")) +
+                    glob.glob(os.path.join(downloads_dir, "audio_*.webm")) +
+                    glob.glob(os.path.join(downloads_dir, "audio_*.opus")) +
+                    glob.glob(os.path.join(downloads_dir, "audio_*.mp3")) +
+                    glob.glob(os.path.join(downloads_dir, "audio_*.mp4"))
+                )
+                
+                if audio_files:
+                    # Sort by modification time, get the most recent
+                    output_file = max(audio_files, key=lambda x: os.path.getmtime(x))
+                    return output_file
+                
+                # If process failed, report error with details
+                if process.returncode != 0:
+                    # Collect any remaining stderr
+                    error_details = "".join(stderr_content[-20:])
+                    raise Exception(f"yt-dlp failed with code {process.returncode}: {error_details}")
+                
+                raise Exception("No audio file generated")
+
+            except Exception as e:
+                last_error = e
+                # Cleanup process if still running
+                if process and process.poll() is None:
+                    try:
+                        process.kill()
+                        process.wait(timeout=5)
+                    except:
+                        pass
+                print(f"LOG: Strategy {strategy['name']} failed: {str(e)[:200]}...")
+                continue
+        
+        # If loop finishes with error
+        if last_error:
+            raise last_error
+        else:
+            raise Exception("Download failed with no specific error")
+
     finally:
         # ALWAYS cleanup temp cookies file
         if cookies_file and os.path.exists(cookies_file):
