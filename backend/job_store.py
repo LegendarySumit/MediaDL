@@ -1,7 +1,8 @@
 from redis_client import redis_client
 import json
+from typing import Optional
 
-def create_job(job_id, **initial_data):
+def create_job(job_id: str, **initial_data) -> None:
     """Create a new job in Redis with initial state"""
     job_data = {
         "progress": 0.0,
@@ -20,14 +21,14 @@ def create_job(job_id, **initial_data):
     )
     print(f"Job created: {job_id}")
 
-def get_job(job_id):
+def get_job(job_id: str) -> Optional[dict]:
     """Get job state from Redis"""
-    data = redis_client.get(f"job:{job_id}")
+    data: Optional[str] = redis_client.get(f"job:{job_id}")  # type: ignore[assignment]
     if data:
         return json.loads(data)
     return None
 
-def update_job(job_id, **updates):
+def update_job(job_id: str, **updates) -> bool:
     """Update specific fields in a job"""
     job = get_job(job_id)
     if not job:
@@ -41,15 +42,15 @@ def update_job(job_id, **updates):
     )
     return True
 
-def delete_job(job_id):
+def delete_job(job_id: str) -> None:
     """Delete a job from Redis"""
     redis_client.delete(f"job:{job_id}")
 
-def list_jobs():
+def list_jobs() -> dict:
     """Get all active jobs"""
-    pattern = redis_client.keys("job:*")
+    keys: list[str] = redis_client.keys("job:*")  # type: ignore[assignment]
     jobs = {}
-    for key in pattern:
+    for key in keys:
         job_id = key.replace("job:", "")
         jobs[job_id] = get_job(job_id)
     return jobs
