@@ -41,35 +41,66 @@ def download_audio_with_progress(
         "--no-cache-dir",
         "--no-check-certificate",
         "--verbose",  # Added for debugging
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     ]
+
+    # PO Token handling
+    po_token = os.getenv("YOUTUBE_PO_TOKEN")
+    visitor_data = os.getenv("YOUTUBE_VISITOR_DATA")
 
     # Define download strategies
     strategies = []
     
     # Platform-specific optimization
     if "youtube.com" in url or "youtu.be" in url:
-        # Strategy 1: YouTube datacenter fix with Web client
+        
+        # Helper to construct extractor args
+        def get_extractor_args(client="web"):
+            args = []
+            if client:
+                args.append(f"youtube:player-client={client}")
+            if po_token:
+                args.append(f"youtube:po_token=web+{po_token}" if client == "web" else f"youtube:po_token={po_token}")
+            if visitor_data:
+                args.append(f"youtube:visitor_data={visitor_data}")
+            return args
+
+        # Strategy 1: Web Safari (Often bypasses GVS PO Token via HLS)
+        strategies.append({
+            "name": "YouTube Web Safari",
+            "args": [
+                "-f", "bestaudio/best",
+                "--extractor-args", "youtube:player-client=web_safari",
+            ]
+        })
+
+        # Strategy 2: Android Client (Common mobile API)
+        strategies.append({
+            "name": "YouTube Android Client",
+            "args": [
+                "-f", "bestaudio/best",
+                "--extractor-args", "youtube:player-client=android",
+            ]
+        })
+        
+        # Strategy 3: Web Client (Standard, with PO Token if available)
+        web_extractor_args = get_extractor_args("web")
         strategies.append({
             "name": "YouTube Web Client",
             "args": [
                 "-f", "bestaudio/best",
-                "--extractor-args", "youtube:player-client=web",
-            ]
+            ] + (["--extractor-args", ";".join(web_extractor_args)] if web_extractor_args else [])
         })
-        # Strategy 2: Standard client (often Android)
+        
+        # Strategy 4: TV Client (Backup)
         strategies.append({
-            "name": "YouTube Default Client",
+            "name": "YouTube TV Client",
             "args": [
                 "-f", "bestaudio/best",
+                "--extractor-args", "youtube:player-client=tv",
             ]
         })
-        # Strategy 3: Fallback
-        strategies.append({
-            "name": "YouTube Fallback",
-            "args": [
-                "-f", "best", # Might download video, but usually acceptable fallback
-            ]
-        })
+
     elif "twitter.com" in url or "x.com" in url:
         strategies.append({
             "name": "Twitter",
