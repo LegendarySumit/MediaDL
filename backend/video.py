@@ -58,10 +58,11 @@ def download_video_with_progress(
     if "youtube.com" in url or "youtu.be" in url:
         # YouTube datacenter fix: Force 'web' client (standard browser).
         # Mobile clients (ios, android, android_vr) are blocked on datacenter IPs.
-        # The 'web' client works correctly when valid cookies are provided.
+        # Use flexible format selection with multiple fallbacks.
         command.extend([
-            "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
-            "-S", sort_spec,
+            "-f", "bv*+ba/bv*+ba*/b/best",
+            "-S", f"ext:mp4:m4a,{sort_spec}",
+            "--merge-output-format", "mp4",
             "--extractor-args", "youtube:player-client=web",
         ])
     elif "twitter.com" in url or "x.com" in url:
