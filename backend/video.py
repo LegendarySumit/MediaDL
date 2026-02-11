@@ -202,20 +202,7 @@ def download_video_with_progress(
                 os.remove(cookies_file)
             except:
                 pass
-        print(f"WARNING: Failed to load cookies: {e}. Attempting download without cookies."):
-                # Using print temporarily for easy Render log visibility
-                print(f"LOG: Loading default cookies from {default_cookies} ({os.path.getsize(default_cookies)} bytes)")
-                cookies_args = ["--cookies", default_cookies]
-            else:
-                print(f"LOG: No cookies file found at {default_cookies}")
-    except Exception as e:
-        # Cleanup temp file on validation error
-        if cookies_file and os.path.exists(cookies_file):
-            try:
-                os.remove(cookies_file)
-            except:
-                pass
-        raise ValueError(f"Invalid cookies: {e}")
+        print(f"WARNING: Failed to load cookies: {e}. Attempting download without cookies.")
     
     last_error = None
     process = None
