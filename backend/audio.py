@@ -45,12 +45,11 @@ def download_audio_with_progress(
 
     # Platform-specific optimization
     if "youtube.com" in url or "youtu.be" in url:
+        # YouTube datacenter fix: Force 'web' client (standard browser).
+        # Mobile clients (ios, android, android_vr) are blocked on datacenter IPs.
         command.extend([
             "-f", "bestaudio/best",
-            "--extractor-args", "youtube:player-client=ios",
-            "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
-            "--referer", "https://www.youtube.com/",
-            "--add-header", "Accept-Language: en-US,en;q=0.9",
+            "--extractor-args", "youtube:player-client=web",
         ])
     elif "twitter.com" in url or "x.com" in url:
         command.extend([
@@ -101,6 +100,7 @@ def download_audio_with_progress(
             stderr=subprocess.PIPE,
             text=True
         )
+        assert process.stderr is not None  # guaranteed by stderr=PIPE
         
         # Read stderr for progress updates in real-time
         for line in iter(process.stderr.readline, ''):
@@ -133,9 +133,11 @@ def download_audio_with_progress(
             output_file = max(audio_files, key=lambda x: os.path.getmtime(x))
             return output_file
         
-        # If process failed, report error
+        # If process failed, report error with details
         if process.returncode != 0:
-            raise Exception(f"yt-dlp failed with code {process.returncode}")
+            # Collect any remaining stderr
+            remaining = process.stderr.read() if process.stderr else ""
+            raise Exception(f"yt-dlp failed with code {process.returncode}: {remaining[-500:]}")
         
         raise Exception("No audio file generated")
     
