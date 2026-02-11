@@ -76,21 +76,21 @@ def download_video_with_progress(
                 args.append(f"youtube:visitor_data={visitor_data}")
             return args
 
-        # Strategy 1: TV Client (No PO Token required per docs, robust)
-        strategies.append({
-            "name": "YouTube TV Client",
-            "args": [
-                "-f", "best", 
-                "--extractor-args", "youtube:player-client=tv",
-            ]
-        })
-
-        # Strategy 2: Web Safari (Bypasses GVS PO Token via HLS/m3u8)
+        # Strategy 1: Web Safari (Bypasses GVS PO Token via HLS/m3u8 - Best current work-around)
         strategies.append({
             "name": "YouTube Web Safari",
             "args": [
-                "-f", "best",
+                "-f", "best[protocol^=m3u8]/best", # Prefer M3U8 for Safari
                 "--extractor-args", "youtube:player-client=web_safari",
+            ]
+        })
+
+        # Strategy 2: TV Client (No PO Token required per docs, robust)
+        strategies.append({
+            "name": "YouTube TV Client",
+            "args": [
+                "-f", "best/bestvideo+bestaudio", # More flexible format selection
+                "--extractor-args", "youtube:player-client=tv",
             ]
         })
 
@@ -114,13 +114,19 @@ def download_video_with_progress(
             ] + (["--extractor-args", ";".join(web_extractor_args)] if web_extractor_args else [])
         })
 
-        # Strategy 5: IOS Client (Backup)
+        # Strategy 5: iOS Client (Backup)
         strategies.append({
             "name": "YouTube iOS Client",
             "args": [
                 "-f", "best",
                 "--extractor-args", "youtube:player-client=ios",
             ]
+        })
+        
+        # Strategy 6: No Client (Let yt-dlp decide default)
+        strategies.append({
+            "name": "YouTube Default",
+            "args": ["-f", "best"]
         })
 
     elif "twitter.com" in url or "x.com" in url:
@@ -173,7 +179,7 @@ def download_video_with_progress(
 
     try:
         for strategy in strategies:
-            print(f"LOG: Attempting download with strategy: {strategy['name']}")
+            print(f"LOG: Attempting download with strategy: {strategy['name']}", flush=True)
             command = base_command + strategy["args"] + cookies_args + [url, "-o", output_template]
             
             output_file = None
@@ -238,7 +244,7 @@ def download_video_with_progress(
                         process.wait(timeout=5)
                     except:
                         pass
-                print(f"LOG: Strategy {strategy['name']} failed: {str(e)[:200]}...")
+                print(f"LOG: Strategy {strategy['name']} failed: {str(e)[:200]}...", flush=True)
                 continue
         
         # If loop finishes without return, raise last error
