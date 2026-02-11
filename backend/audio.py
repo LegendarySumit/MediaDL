@@ -65,7 +65,16 @@ def download_audio_with_progress(
                 args.append(f"youtube:visitor_data={visitor_data}")
             return args
 
-        # Strategy 1: Web Safari (Often bypasses GVS PO Token via HLS)
+        # Strategy 1: HLS/SABR Format (Best for SABR-protected content)
+        strategies.append({
+            "name": "YouTube SABR HLS Format",
+            "args": [
+                "-f", "best[protocol^=m3u8]/bestaudio/best",
+                "--extractor-args", "youtube:player-client=web_safari",
+            ]
+        })
+
+        # Strategy 2: Web Safari (Often bypasses GVS PO Token via HLS)
         strategies.append({
             "name": "YouTube Web Safari",
             "args": [
@@ -74,7 +83,7 @@ def download_audio_with_progress(
             ]
         })
 
-        # Strategy 2: Android Client (Common mobile API)
+        # Strategy 3: Android Client (Common mobile API)
         strategies.append({
             "name": "YouTube Android Client",
             "args": [
@@ -82,8 +91,17 @@ def download_audio_with_progress(
                 "--extractor-args", "youtube:player-client=android",
             ]
         })
+
+        # Strategy 4: Mobile Web Client (mweb - often works around blocks)
+        strategies.append({
+            "name": "YouTube Mobile Web Client",
+            "args": [
+                "-f", "bestaudio/best",
+                "--extractor-args", "youtube:player-client=mweb",
+            ]
+        })
         
-        # Strategy 3: Web Client (Standard, with PO Token if available)
+        # Strategy 5: Web Client (Standard, with PO Token if available)
         web_extractor_args = get_extractor_args("web")
         strategies.append({
             "name": "YouTube Web Client",
@@ -92,12 +110,21 @@ def download_audio_with_progress(
             ] + (["--extractor-args", ";".join(web_extractor_args)] if web_extractor_args else [])
         })
         
-        # Strategy 4: TV Client (Backup)
+        # Strategy 6: TV Client (Backup)
         strategies.append({
             "name": "YouTube TV Client",
             "args": [
                 "-f", "bestaudio/best",
                 "--extractor-args", "youtube:player-client=tv",
+            ]
+        })
+
+        # Strategy 7: Fallback with skip-unavailable streams
+        strategies.append({
+            "name": "YouTube Fallback (Skip Unavailable)",
+            "args": [
+                "-f", "bestaudio/best",
+                "--skip-unavailable-fragments",
             ]
         })
 
@@ -121,21 +148,34 @@ def download_audio_with_progress(
     cookies_args = []
     cookies_file = None
     try:
-        # Check for cookies passed from frontend
+        # First check for cookies passed from frontend
         if cookies and cookies.strip():
             fd, cookies_file = tempfile.mkstemp(suffix=".txt", prefix="cookies_")
             with os.fdopen(fd, 'w') as f:
                 f.write(cookies)
             cookies_args = ["--cookies", cookies_file]
+            print(f"LOG: Using frontend-provided cookies")
         else:
+            # Then check environment variable for cookies path
+            cookies_env_path = os.getenv("YOUTUBE_COOKIES_PATH")
+            
             # Check for local cookies.txt in the backend folder
             backend_dir = os.path.dirname(os.path.abspath(__file__))
             default_cookies = os.path.join(backend_dir, "cookies.txt")
-            if os.path.exists(default_cookies):
+            
+            # Use environment path if specified, otherwise use default location
+            cookies_to_use = None
+            if cookies_env_path and os.path.exists(cookies_env_path):
+                cookies_to_use = cookies_env_path
+                print(f"LOG: Loading cookies from env path: {cookies_env_path}")
+            elif os.path.exists(default_cookies):
+                cookies_to_use = default_cookies
                 print(f"LOG: Loading default cookies from {default_cookies} ({os.path.getsize(default_cookies)} bytes)")
-                cookies_args = ["--cookies", default_cookies]
+            
+            if cookies_to_use:
+                cookies_args = ["--cookies", cookies_to_use]
             else:
-                print(f"LOG: No cookies file found at {default_cookies}")
+                print(f"LOG: No cookies file found. Some videos may be unavailable.")
     except Exception as e:
         # Cleanup temp file on validation error
         if cookies_file and os.path.exists(cookies_file):
@@ -143,7 +183,8 @@ def download_audio_with_progress(
                 os.remove(cookies_file)
             except:
                 pass
-        raise ValueError(f"Invalid cookies: {e}")
+        print(f"WARNING: Failed to load cookies: {e}. Attempting download without cookies.")
+
     
     last_error = None
     process = None
