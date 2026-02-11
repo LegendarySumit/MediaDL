@@ -56,14 +56,12 @@ def download_video_with_progress(
 
     # Platform-specific optimization
     if "youtube.com" in url or "youtu.be" in url:
-        # YouTube datacenter bypass: Use iOS client ONLY with specific headers
+        # YouTube datacenter bypass: Default usually works best with cookies now.
+        # 'ios' often triggers LOGIN_REQUIRED.
         command.extend([
             "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
             "-S", sort_spec,
-            "--extractor-args", "youtube:player-client=ios",
-            "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
-            "--referer", "https://www.youtube.com/",
-            "--add-header", "Accept-Language: en-US,en;q=0.9",
+            # Removed forced ios client which was triggering bot detection
         ])
     elif "twitter.com" in url or "x.com" in url:
         # Twitter specific
