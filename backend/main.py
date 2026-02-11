@@ -59,7 +59,7 @@ app.add_exception_handler(RateLimitExceeded, lambda req, exc: JSONResponse(
 # Allow frontend to communicate with backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://media-dl.vercel.app", "http://localhost:3000"],
+    allow_origins=Config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -129,10 +129,11 @@ def start_video(
         job_id = str(uuid.uuid4())
         platform = detect_platform(url)
         
+        client_ip = request.client.host if request.client else "unknown"
         job_data = {
             "job_id": job_id, "url": url, "platform": platform, "type": "video",
             "format": "mp4", "quality": quality, "status": "queued", "progress": 0,
-            "client_ip": request.client.host, "created_at": datetime.now().isoformat()
+            "client_ip": client_ip, "created_at": datetime.now().isoformat()
         }
         create_job(job_data)
         
@@ -163,10 +164,11 @@ def start_audio(
         job_id = str(uuid.uuid4())
         platform = detect_platform(url)
         
+        client_ip = request.client.host if request.client else "unknown"
         job_data = {
             "job_id": job_id, "url": url, "platform": platform, "type": "audio",
             "format": "webm", "quality": quality, "status": "queued", "progress": 0,
-            "client_ip": request.client.host, "created_at": datetime.now().isoformat()
+            "client_ip": client_ip, "created_at": datetime.now().isoformat()
         }
         create_job(job_data)
         
@@ -232,6 +234,19 @@ app.include_router(api_router)
 async def startup_event():
     logger.info("MEDIA DOWNLOADER STARTUP")
     Config.validate()
+    
+    # Securely load cookies from environment variable (for Render/Production)
+    cookies_content = os.getenv("YOUTUBE_COOKIES")
+    if cookies_content:
+        cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+        try:
+            with open(cookies_path, "w") as f:
+                f.write(cookies_content)
+            logger.info(f"Loaded cookies from YOUTUBE_COOKIES env var ({len(cookies_content)} bytes)")
+        except Exception as e:
+            logger.error(f"Failed to write cookies file from env var: {e}")
+    else:
+        logger.warning("YOUTUBE_COOKIES env var not set. YouTube downloads may fail without cookies.")
 
 @app.on_event("shutdown")
 async def shutdown_event():

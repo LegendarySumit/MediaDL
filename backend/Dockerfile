@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Always upgrade yt-dlp to latest version (YouTube fixes land frequently)
+RUN pip install --no-cache-dir --upgrade yt-dlp
+
 # Copy backend code
 COPY . .
 

@@ -1,10 +1,13 @@
 import redis
 import fakeredis
 import os
+from typing import Union
 
 # Determine Redis host from environment (Docker vs local)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 USE_FAKEREDIS = os.getenv("USE_FAKEREDIS", "true").lower() == "true"
+
+redis_client: Union[redis.Redis[str], fakeredis.FakeRedis]
 
 # Use fakeredis for development (in-memory), real Redis for production
 if USE_FAKEREDIS:
