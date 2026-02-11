@@ -52,9 +52,8 @@ backend/.env
 !frontend/lib/**
 
 # Sensitive files
-# cookies.txt
-# cookies.txt is needed for YouTube authentication on Render
-# cookies.txt
+backend/cookies.txt
+cookies.txt
 *.cookie
 
 # SSL certificates
