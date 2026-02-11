@@ -122,11 +122,29 @@ def download_video_with_progress(
                 "--extractor-args", "youtube:player-client=ios",
             ]
         })
+
+        # Strategy 6: Mobile Web Client (mweb - often works around SABR blocks)
+        strategies.append({
+            "name": "YouTube Mobile Web Client",
+            "args": [
+                "-f", "best[protocol^=m3u8]/best",
+                "--extractor-args", "youtube:player-client=mweb",
+            ]
+        })
         
-        # Strategy 6: No Client (Let yt-dlp decide default)
+        # Strategy 7: No Client (Let yt-dlp decide default)
         strategies.append({
             "name": "YouTube Default",
             "args": ["-f", "best"]
+        })
+
+        # Strategy 8: Fallback with skip-unavailable fragments for SABR issues
+        strategies.append({
+            "name": "YouTube Fallback (Skip Unavailable)",
+            "args": [
+                "-f", "best",
+                "--skip-unavailable-fragments",
+            ]
         })
 
     elif "twitter.com" in url or "x.com" in url:
@@ -149,17 +167,42 @@ def download_video_with_progress(
     cookies_args = []
     cookies_file = None
     try:
-        # Check for cookies passed from frontend
+        # First check for cookies passed from frontend
         if cookies and cookies.strip():
             fd, cookies_file = tempfile.mkstemp(suffix=".txt", prefix="cookies_")
             with os.fdopen(fd, 'w') as f:
                 f.write(cookies)
             cookies_args = ["--cookies", cookies_file]
+            print(f"LOG: Using frontend-provided cookies")
         else:
+            # Then check environment variable for cookies path
+            cookies_env_path = os.getenv("YOUTUBE_COOKIES_PATH")
+            
             # Check for local cookies.txt in the backend folder
             backend_dir = os.path.dirname(os.path.abspath(__file__))
             default_cookies = os.path.join(backend_dir, "cookies.txt")
-            if os.path.exists(default_cookies):
+            
+            # Use environment path if specified, otherwise use default location
+            cookies_to_use = None
+            if cookies_env_path and os.path.exists(cookies_env_path):
+                cookies_to_use = cookies_env_path
+                print(f"LOG: Loading cookies from env path: {cookies_env_path}")
+            elif os.path.exists(default_cookies):
+                cookies_to_use = default_cookies
+                print(f"LOG: Loading default cookies from {default_cookies} ({os.path.getsize(default_cookies)} bytes)")
+            
+            if cookies_to_use:
+                cookies_args = ["--cookies", cookies_to_use]
+            else:
+                print(f"LOG: No cookies file found. Some videos may be unavailable.")
+    except Exception as e:
+        # Cleanup temp file on validation error
+        if cookies_file and os.path.exists(cookies_file):
+            try:
+                os.remove(cookies_file)
+            except:
+                pass
+        print(f"WARNING: Failed to load cookies: {e}. Attempting download without cookies."):
                 # Using print temporarily for easy Render log visibility
                 print(f"LOG: Loading default cookies from {default_cookies} ({os.path.getsize(default_cookies)} bytes)")
                 cookies_args = ["--cookies", default_cookies]
