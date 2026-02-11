@@ -8,6 +8,7 @@ import time
 import uuid
 import os
 import logging
+import base64
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
@@ -64,6 +65,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Setup cookies from environment variable at startup
+@app.on_event("startup")
+async def setup_cookies_on_startup():
+    """Decode YOUTUBE_COOKIES_BASE64 environment variable and write to cookies.txt"""
+    cookies_b64 = os.getenv("YOUTUBE_COOKIES_BASE64")
+    if cookies_b64:
+        try:
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            cookies_path = os.path.join(backend_dir, "cookies.txt")
+            cookies_content = base64.b64decode(cookies_b64).decode('utf-8')
+            with open(cookies_path, 'w', encoding='utf-8') as f:
+                f.write(cookies_content)
+            os.chmod(cookies_path, 0o600)
+            logger.info(f"YouTube cookies loaded from environment ({len(cookies_content)} bytes)")
+        except Exception as e:
+            logger.warning(f"Failed to setup cookies from YOUTUBE_COOKIES_BASE64: {e}")
+    else:
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        cookies_path = os.path.join(backend_dir, "cookies.txt")
+        if os.path.exists(cookies_path):
+            size = os.path.getsize(cookies_path)
+            logger.info(f"Using existing cookies.txt ({size} bytes)")
+        else:
+            logger.warning("No YouTube cookies found. Some videos may fail to download.")
 
 # Root endpoints (for Render health checks)
 @app.get("/")
