@@ -58,50 +58,60 @@ def download_audio_with_progress(
         def get_extractor_args(client="web"):
             args = []
             if client:
-                args.append(f"youtube:player-client={client}")
+                # NOTE: yt-dlp requires underscore: player_client (NOT player-client)
+                args.append(f"youtube:player_client={client}")
             if po_token:
                 args.append(f"youtube:po_token=web+{po_token}" if client == "web" else f"youtube:po_token={po_token}")
             if visitor_data:
                 args.append(f"youtube:visitor_data={visitor_data}")
             return args
 
-        # Strategy 1: HLS/SABR Format (Best for SABR-protected content)
+        # Strategy 1: Android + Web (mirrors MM-DL working base flags — most reliable)
+        strategies.append({
+            "name": "YouTube Android+Web Client",
+            "args": [
+                "-f", "bestaudio/best",
+                "--extractor-args", "youtube:player_client=android,web",
+            ]
+        })
+
+        # Strategy 2: HLS/SABR Format (Best for SABR-protected content)
         strategies.append({
             "name": "YouTube SABR HLS Format",
             "args": [
                 "-f", "best[protocol^=m3u8]/bestaudio/best",
-                "--extractor-args", "youtube:player-client=web_safari",
+                "--extractor-args", "youtube:player_client=web_safari",
             ]
         })
 
-        # Strategy 2: Web Safari (Often bypasses GVS PO Token via HLS)
+        # Strategy 3: Web Safari (Often bypasses GVS PO Token via HLS)
         strategies.append({
             "name": "YouTube Web Safari",
             "args": [
                 "-f", "bestaudio/best",
-                "--extractor-args", "youtube:player-client=web_safari",
+                "--extractor-args", "youtube:player_client=web_safari",
             ]
         })
 
-        # Strategy 3: Android Client (Common mobile API)
+        # Strategy 4: Android Client (Common mobile API)
         strategies.append({
             "name": "YouTube Android Client",
             "args": [
                 "-f", "bestaudio/best",
-                "--extractor-args", "youtube:player-client=android",
+                "--extractor-args", "youtube:player_client=android",
             ]
         })
 
-        # Strategy 4: Mobile Web Client (mweb - often works around blocks)
+        # Strategy 5: Mobile Web Client (mweb - often works around blocks)
         strategies.append({
             "name": "YouTube Mobile Web Client",
             "args": [
                 "-f", "bestaudio/best",
-                "--extractor-args", "youtube:player-client=mweb",
+                "--extractor-args", "youtube:player_client=mweb",
             ]
         })
         
-        # Strategy 5: Web Client (Standard, with PO Token if available)
+        # Strategy 6: Web Client (Standard, with PO Token if available)
         web_extractor_args = get_extractor_args("web")
         strategies.append({
             "name": "YouTube Web Client",
@@ -110,16 +120,16 @@ def download_audio_with_progress(
             ] + (["--extractor-args", ";".join(web_extractor_args)] if web_extractor_args else [])
         })
         
-        # Strategy 6: TV Client (Backup)
+        # Strategy 7: TV Client (Backup)
         strategies.append({
             "name": "YouTube TV Client",
             "args": [
                 "-f", "bestaudio/best",
-                "--extractor-args", "youtube:player-client=tv",
+                "--extractor-args", "youtube:player_client=tv",
             ]
         })
 
-        # Strategy 7: Fallback with skip-unavailable streams
+        # Strategy 8: Fallback with skip-unavailable streams
         strategies.append({
             "name": "YouTube Fallback (Skip Unavailable)",
             "args": [

@@ -69,41 +69,53 @@ def download_video_with_progress(
         def get_extractor_args(client="web"):
             args = []
             if client:
-                args.append(f"youtube:player-client={client}")
+                # NOTE: yt-dlp requires underscore: player_client (NOT player-client)
+                args.append(f"youtube:player_client={client}")
             if po_token:
                 args.append(f"youtube:po_token=web+{po_token}" if client == "web" else f"youtube:po_token={po_token}")
             if visitor_data:
                 args.append(f"youtube:visitor_data={visitor_data}")
             return args
 
-        # Strategy 1: Web Safari (Bypasses GVS PO Token via HLS/m3u8 - Best current work-around)
+        # Strategy 1: Android + Web (mirrors MM-DL working base flags — most reliable)
+        strategies.append({
+            "name": "YouTube Android+Web Client",
+            "args": [
+                "-f", "bestvideo+bestaudio/best",
+                "-S", f"ext:mp4:m4a,{sort_spec}",
+                "--merge-output-format", "mp4",
+                "--extractor-args", "youtube:player_client=android,web",
+            ]
+        })
+
+        # Strategy 2: Web Safari (Bypasses GVS PO Token via HLS/m3u8)
         strategies.append({
             "name": "YouTube Web Safari",
             "args": [
-                "-f", "best[protocol^=m3u8]/best", # Prefer M3U8 for Safari
-                "--extractor-args", "youtube:player-client=web_safari",
+                "-f", "best[protocol^=m3u8]/best",
+                "--extractor-args", "youtube:player_client=web_safari",
             ]
         })
 
-        # Strategy 2: TV Client (No PO Token required per docs, robust)
+        # Strategy 3: TV Client (No PO Token required per docs, robust)
         strategies.append({
             "name": "YouTube TV Client",
             "args": [
-                "-f", "best/bestvideo+bestaudio", # More flexible format selection
-                "--extractor-args", "youtube:player-client=tv",
+                "-f", "best/bestvideo+bestaudio",
+                "--extractor-args", "youtube:player_client=tv",
             ]
         })
 
-        # Strategy 3: Android Client (Common mobile API)
+        # Strategy 4: Android Client (Common mobile API)
         strategies.append({
             "name": "YouTube Android Client",
             "args": [
                 "-f", "best",
-                "--extractor-args", "youtube:player-client=android",
+                "--extractor-args", "youtube:player_client=android",
             ]
         })
         
-        # Strategy 4: Web Client (Standard, with PO Token if available)
+        # Strategy 5: Web Client (Standard, with PO Token if available)
         web_extractor_args = get_extractor_args("web")
         strategies.append({
             "name": "YouTube Web Client",
@@ -114,31 +126,31 @@ def download_video_with_progress(
             ] + (["--extractor-args", ";".join(web_extractor_args)] if web_extractor_args else [])
         })
 
-        # Strategy 5: iOS Client (Backup)
+        # Strategy 6: iOS Client (Backup)
         strategies.append({
             "name": "YouTube iOS Client",
             "args": [
                 "-f", "best",
-                "--extractor-args", "youtube:player-client=ios",
+                "--extractor-args", "youtube:player_client=ios",
             ]
         })
 
-        # Strategy 6: Mobile Web Client (mweb - often works around SABR blocks)
+        # Strategy 7: Mobile Web Client (mweb - often works around SABR blocks)
         strategies.append({
             "name": "YouTube Mobile Web Client",
             "args": [
                 "-f", "best[protocol^=m3u8]/best",
-                "--extractor-args", "youtube:player-client=mweb",
+                "--extractor-args", "youtube:player_client=mweb",
             ]
         })
         
-        # Strategy 7: No Client (Let yt-dlp decide default)
+        # Strategy 8: No Client (Let yt-dlp decide default)
         strategies.append({
             "name": "YouTube Default",
             "args": ["-f", "best"]
         })
 
-        # Strategy 8: Fallback with skip-unavailable fragments for SABR issues
+        # Strategy 9: Fallback with skip-unavailable fragments for SABR issues
         strategies.append({
             "name": "YouTube Fallback (Skip Unavailable)",
             "args": [
