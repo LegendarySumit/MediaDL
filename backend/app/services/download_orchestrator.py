@@ -56,15 +56,16 @@ def create_download_wrapper(
             update_job(job_id, status="running", progress=0)
             logger.info(f"Job {job_id}: Starting {media_type} download")
             
-            # Execute appropriate download function
+            # Execute appropriate download function and capture returned file path
+            file_path = None
             if media_type == "video":
-                download_video_with_progress(
+                file_path = download_video_with_progress(
                     url, quality, 
                     lambda p: progress_callback(p) if progress_callback else None,
                     cookies=cookies if cookies else None
                 )
             elif media_type == "audio":
-                download_audio_with_progress(
+                file_path = download_audio_with_progress(
                     url, quality,
                     lambda p: progress_callback(p) if progress_callback else None,
                     cookies=cookies if cookies else None
@@ -72,9 +73,10 @@ def create_download_wrapper(
             else:
                 raise ValueError(f"Invalid media_type: {media_type}")
             
-            # After download succeeds, find the downloaded file
-            # FIXED: Use proper file discovery to avoid race conditions
-            file_path = find_latest_download(media_type)
+            # Use the returned file path directly; fall back to glob search if needed
+            if not file_path or not os.path.exists(str(file_path)):
+                logger.warning(f"Job {job_id}: download function returned no path, falling back to glob search")
+                file_path = find_latest_download(media_type)
             
             if file_path:
                 file_name = os.path.basename(file_path)
