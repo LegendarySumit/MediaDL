@@ -24,9 +24,9 @@ export default function Home() {
     <main className={isDark ? "bg-slate-950 text-white" : "bg-white text-slate-900"}>
       <Navbar onStartClick={handleStartClick} />
       <Hero onStartClick={handleStartClick} />
-      <Features />
-      <ToolSection toolRef={toolRef} />
       <HowItWorks />
+      <ToolSection toolRef={toolRef} />
+      <Features />
       <FAQ />
       <Footer />
     </main>

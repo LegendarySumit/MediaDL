@@ -111,17 +111,27 @@ export default function ToolSection({ toolRef }) {
       id="tool-section"
       ref={toolRef}
       className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${isDark
-          ? "bg-linear-to-b from-slate-950 to-slate-900"
-          : "bg-linear-to-b from-slate-50 to-white"
+          ? "bg-gradient-to-b from-slate-950 to-slate-900"
+          : "bg-gradient-to-b from-slate-50 to-white"
         }`}
     >
       <div className="max-w-3xl mx-auto">
         {/* Section Header */}
         <div className="text-center mb-8 xs:mb-12">
+          {/* Badge */}
+          <div className="flex justify-center mb-4">
+            <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest border ${
+              isDark
+                ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                : "bg-blue-50 border-blue-300/60 text-blue-700"
+            }`}>
+              <i className="fas fa-download"></i> Get Started
+            </span>
+          </div>
           <h2
             className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${isDark
-                ? "bg-linear-to-r from-blue-400 to-sky-400 bg-clip-text text-transparent"
-                : "bg-linear-to-r from-blue-600 to-sky-600 bg-clip-text text-transparent"
+                ? "bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
+                : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
               }`}
           >
             Download Any Video
@@ -137,8 +147,8 @@ export default function ToolSection({ toolRef }) {
         {/* Downloader Card */}
         <div
           className={`rounded-xl xs:rounded-2xl p-4 xs:p-6 sm:p-8 shadow-2xl border transition-colors duration-300 ${isDark
-              ? "bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-white border-slate-700/50"
-              : "bg-white text-slate-900 border-slate-200 shadow-xl"
+              ? "bg-gradient-to-br from-slate-900/80 via-slate-800/40 to-slate-900/80 text-white border-slate-700/50 backdrop-blur-sm"
+              : "bg-white/70 text-slate-900 border-slate-200 shadow-xl backdrop-blur-sm"
             }`}
         >
           {/* Error Message */}
@@ -178,60 +188,64 @@ export default function ToolSection({ toolRef }) {
 
           {/* URL Input + Fetch */}
           <div className="space-y-1.5 xs:space-y-2 mb-4 xs:mb-5">
-            <label
-              className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${isDark ? "text-slate-300" : "text-slate-700"
-                }`}
-            >
-              Paste Video URL
-            </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  className={`w-full p-2.5 xs:p-3 rounded-lg border transition-all focus:outline-none text-xs xs:text-sm backdrop-blur-sm disabled:opacity-50 ${isDark
-                      ? "bg-slate-800/50 text-white placeholder-slate-500"
-                      : "bg-slate-50 text-slate-900 placeholder-slate-400"
-                    } ${isUrlValid
-                      ? "border-green-500/50 focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
-                      : url
-                        ? "border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-                        : isDark
-                          ? "border-slate-600/50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                          : "border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    }`}
-                  placeholder="https://youtube.com/watch?v=..."
-                  value={url}
-                  onChange={(e) => {
-                    setUrl(e.target.value);
-                    if (videoInfo) {
-                      setVideoInfo(null);
-                      setSelectedFormat("");
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && isUrlValid) fetchInfo();
-                  }}
-                  disabled={loading}
-                  type="url"
-                />
-                {detectedPlatform && (
-                  <div
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-[10px] xs:text-xs px-2 py-0.5 rounded-full font-medium ${isDark
-                        ? "bg-slate-700/80 text-slate-300"
-                        : "bg-slate-200 text-slate-600"
+            {/* Label + Platform Badge */}
+            <div className="flex justify-between items-center gap-2">
+              <label
+                className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${isDark ? "text-slate-300" : "text-slate-700"
+                  }`}
+              >
+                Paste Video URL
+              </label>
+              {detectedPlatform && (
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] xs:text-xs font-semibold whitespace-nowrap ${isDark
+                    ? "bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/40 text-blue-300"
+                    : "bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-300/60 text-blue-700"
+                  }`}
+                >
+                  {detectedPlatform.emoji} {detectedPlatform.name}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {/* Input Row */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    className={`w-full p-2.5 xs:p-3 rounded-lg border transition-all focus:outline-none text-xs xs:text-sm backdrop-blur-sm disabled:opacity-50 ${isDark
+                        ? "bg-slate-800/50 text-white placeholder-slate-500"
+                        : "bg-slate-50 text-slate-900 placeholder-slate-400"
+                      } ${isUrlValid
+                        ? "border-green-500/50 focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
+                        : url
+                          ? "border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                          : isDark
+                            ? "border-slate-600/50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            : "border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                       }`}
-                  >
-                    {detectedPlatform.emoji} {detectedPlatform.name}
-                  </div>
-                )}
-              </div>
-              <button
+                    placeholder="https://youtube.com/watch?v=..."
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      if (videoInfo) {
+                        setVideoInfo(null);
+                        setSelectedFormat("");
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && isUrlValid) fetchInfo();
+                    }}
+                    disabled={loading}
+                    type="url"
+                  />
+                </div>
+                <button
                 disabled={loading || !isUrlValid}
                 onClick={fetchInfo}
-                className={`px-4 xs:px-5 rounded-lg font-bold transition-all text-xs xs:text-sm flex items-center gap-1.5 shrink-0 border-2 ${loading || !isUrlValid
+                className={`px-4 xs:px-5 rounded-lg font-bold transition-all text-xs xs:text-sm flex items-center gap-1.5 shrink-0 ${loading || !isUrlValid
                     ? isDark
-                      ? "bg-slate-700/20 border-slate-600/50 cursor-not-allowed text-slate-500"
-                      : "bg-slate-200 border-slate-300 cursor-not-allowed text-slate-400"
-                    : "bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-transparent text-white hover:shadow-lg hover:shadow-blue-600/30 active:scale-95"
+                      ? "bg-slate-700/30 cursor-not-allowed text-slate-500"
+                      : "bg-slate-200/50 cursor-not-allowed text-slate-400"
+                    : "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:opacity-90 active:scale-95"
                   }`}
               >
                 {loading ? (
@@ -255,28 +269,32 @@ export default function ToolSection({ toolRef }) {
                     />
                   </svg>
                 ) : (
-                  <span>🔍</span>
+                  <i className="fas fa-search"></i>
                 )}
                 <span>{loading ? "Fetching…" : "Fetch"}</span>
               </button>
+              </div>
             </div>
           </div>
 
           {/* ─── Video Info Result Card ─── */}
           {videoInfo && (
             <div className="animate-fadeIn">
-              {/* Thumbnail + Info */}
+              {/* Thumbnail + Info Card */}
               <div
-                className={`rounded-lg overflow-hidden border mb-4 xs:mb-5 ${isDark ? "border-slate-700/50" : "border-slate-200"
+                className={`rounded-xl overflow-hidden border-2 mb-6 backdrop-blur-sm transition-all hover:shadow-lg ${
+                  isDark
+                    ? "bg-gradient-to-br from-slate-800/60 to-slate-900/60 border-slate-700/40 hover:border-purple-500/40"
+                    : "bg-gradient-to-br from-slate-50/80 to-white/80 border-slate-200 hover:border-slate-300"
                   }`}
               >
-                <div className="flex flex-col sm:flex-row">
-                  {/* Thumbnail */}
-                  <div className="relative sm:w-52 sm:shrink-0">
+                <div className="flex flex-col sm:flex-row gap-4 sm:gap-0">
+                  {/* Thumbnail Container */}
+                  <div className="relative sm:w-64 sm:shrink-0 flex-shrink-0 h-44 sm:h-auto">
                     <img
                       src={videoInfo.thumbnail}
                       alt={videoInfo.title}
-                      className="w-full h-36 sm:h-full object-cover"
+                      className="w-full h-full object-cover"
                       onError={(e) => {
                         e.target.src =
                           "data:image/svg+xml;base64," +
@@ -285,84 +303,105 @@ export default function ToolSection({ toolRef }) {
                           );
                       }}
                     />
+                    {/* Duration Badge */}
                     {videoInfo.duration_string && (
                       <span
-                        className="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] xs:text-xs px-1.5 py-0.5 rounded font-mono"
+                        className={`absolute bottom-3 right-3 text-xs font-bold px-2.5 py-1 rounded-md backdrop-blur-sm ${
+                          isDark
+                            ? "bg-black/70 text-white"
+                            : "bg-black/60 text-white"
+                          }`}
                       >
                         {videoInfo.duration_string}
                       </span>
                     )}
                   </div>
 
-                  {/* Info */}
-                  <div className="p-3 xs:p-4 flex-1 min-w-0">
-                    {/* Platform Badge + Uploader */}
-                    <div className="flex items-center gap-2 mb-1.5">
-                      {detectedPlatform && (
-                        <span
-                          className={`text-[10px] xs:text-xs px-1.5 py-0.5 rounded font-medium ${isDark
-                              ? "bg-slate-700/80 text-slate-300"
-                              : "bg-slate-200 text-slate-600"
-                            }`}
-                        >
-                          {detectedPlatform.emoji} {detectedPlatform.name}
-                        </span>
-                      )}
-                      <span
-                        className={`text-[10px] xs:text-xs truncate ${isDark ? "text-slate-400" : "text-slate-500"
+                  {/* Info Section */}
+                  <div className="flex-1 p-5 xs:p-6 flex flex-col justify-between">
+                    {/* Platform + Uploader */}
+                    <div>
+                      <div className="flex items-center gap-2.5 mb-3">
+                        {detectedPlatform && (
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold ${
+                              isDark
+                                ? "bg-blue-500/20 border border-blue-500/40 text-blue-300"
+                                : "bg-blue-50 border border-blue-300/60 text-blue-700"
+                              }`}
+                          >
+                            {detectedPlatform.emoji} {detectedPlatform.name}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Title */}
+                      <h3
+                        className={`text-base xs:text-lg sm:text-xl font-bold leading-snug mb-3 line-clamp-3 ${
+                          isDark ? "text-white" : "text-slate-900"
                           }`}
                       >
-                        {videoInfo.uploader}
-                      </span>
-                    </div>
+                        {videoInfo.title || "Untitled Video"}
+                      </h3>
 
-                    {/* Title */}
-                    <h3
-                      className={`text-sm xs:text-base font-bold leading-snug mb-2 line-clamp-2 ${isDark ? "text-white" : "text-slate-900"
-                        }`}
-                    >
-                      {videoInfo.title || "Untitled Video"}
-                    </h3>
+                      {/* Uploader */}
+                      {videoInfo.uploader && (
+                        <p
+                          className={`text-sm mb-3 ${
+                            isDark ? "text-slate-400" : "text-slate-600"
+                            }`}
+                        >
+                          By <span className="font-semibold">{videoInfo.uploader}</span>
+                        </p>
+                      )}
+                    </div>
 
                     {/* Stats */}
                     <div
-                      className={`flex flex-wrap gap-3 text-[10px] xs:text-xs ${isDark ? "text-slate-400" : "text-slate-500"
+                      className={`grid grid-cols-2 xs:grid-cols-3 gap-3 pt-3 border-t ${
+                        isDark ? "border-slate-700/50 text-slate-300" : "border-slate-200 text-slate-600"
                         }`}
                     >
                       {videoInfo.view_count > 0 && (
-                        <span>👁 {fmtNum(videoInfo.view_count)} views</span>
+                        <div className="flex items-center gap-2 text-xs xs:text-sm">
+                          <i className="fas fa-eye text-blue-400"></i>
+                          <span>{fmtNum(videoInfo.view_count)}</span>
+                        </div>
                       )}
                       {videoInfo.like_count > 0 && (
-                        <span>❤ {fmtNum(videoInfo.like_count)}</span>
+                        <div className="flex items-center gap-2 text-xs xs:text-sm">
+                          <i className="fas fa-heart text-pink-400"></i>
+                          <span>{fmtNum(videoInfo.like_count)}</span>
+                        </div>
                       )}
                       {videoInfo.duration_string && (
-                        <span>⏱ {videoInfo.duration_string}</span>
-                      )}
-                      {videoInfo.ffmpeg !== undefined && (
-                        <span>
-                          {videoInfo.ffmpeg ? "🔧 ffmpeg ✓" : "⚠️ no ffmpeg"}
-                        </span>
+                        <div className="flex items-center gap-2 text-xs xs:text-sm">
+                          <i className="fas fa-clock text-purple-400"></i>
+                          <span>{videoInfo.duration_string}</span>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Format Selector */}
-              <div className="space-y-1.5 xs:space-y-2 mb-4 xs:mb-5">
+              {/* Quality & Format Selector */}
+              <div className="space-y-2 mb-5">
                 <label
-                  className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${isDark ? "text-slate-300" : "text-slate-700"
+                  className={`text-xs font-semibold uppercase tracking-widest ${
+                    isDark ? "text-slate-300" : "text-slate-700"
                     }`}
                 >
-                  Quality & Format
+                  <i className="fas fa-cog mr-1.5"></i>Quality & Format
                 </label>
-                <div className="relative">
+                <div className="relative group">
                   <select
                     value={selectedFormat}
                     onChange={(e) => setSelectedFormat(e.target.value)}
-                    className={`w-full p-2.5 xs:p-3 rounded-lg border appearance-none cursor-pointer transition-all text-xs xs:text-sm pr-10 focus:outline-none ${isDark
-                        ? "bg-slate-800/50 text-white border-slate-600/50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        : "bg-slate-50 text-slate-900 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    className={`w-full px-4 py-3.5 rounded-lg border-2 appearance-none cursor-pointer transition-all text-sm font-medium pr-10 focus:outline-none ${
+                      isDark
+                        ? "bg-slate-800/60 text-white border-slate-600/50 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 hover:border-slate-500"
+                        : "bg-slate-100/60 text-slate-900 border-slate-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 hover:border-slate-400"
                       }`}
                   >
                     {(videoInfo.formats || []).map((f) => (
@@ -372,61 +411,57 @@ export default function ToolSection({ toolRef }) {
                     ))}
                   </select>
                   <div
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${isDark ? "text-slate-400" : "text-slate-500"
+                    className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg ${
+                      isDark ? "text-slate-400" : "text-slate-600"
                       }`}
                   >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
+                    <i className="fas fa-chevron-down"></i>
                   </div>
                 </div>
               </div>
 
-              {/* Download Button */}
-              <button
-                disabled={downloading || !selectedFormat}
-                onClick={startDownload}
-                className={`w-full py-3 xs:py-3.5 sm:py-4 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 xs:gap-2 mb-3 text-sm xs:text-base border-2 ${downloading
-                    ? "bg-linear-to-r from-green-600 to-emerald-600 border-green-500/30 text-white"
-                    : !selectedFormat
-                      ? isDark
-                        ? "bg-slate-700/20 border-slate-600/50 cursor-not-allowed text-slate-400"
-                        : "bg-slate-200 border-slate-300 cursor-not-allowed text-slate-400"
-                      : "bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-transparent hover:shadow-lg hover:shadow-blue-600/50 active:scale-95 text-white"
-                  }`}
-              >
-                {downloading ? (
-                  <>
-                    <span className="text-lg xs:text-xl">✅</span>
-                    <span>Download Started!</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-lg xs:text-xl">⬇️</span>
-                    <span>Download</span>
-                  </>
-                )}
-              </button>
+              {/* Action Buttons Container */}
+              <div className="space-y-3">
+                {/* Download Button */}
+                <button
+                  disabled={downloading || !selectedFormat}
+                  onClick={startDownload}
+                  className={`w-full py-4 xs:py-5 rounded-xl font-bold transition-all flex items-center justify-center gap-2.5 text-base xs:text-lg uppercase tracking-wide ${
+                    downloading
+                      ? "bg-gradient-to-r from-green-600 to-emerald-600 text-white"
+                      : !selectedFormat
+                        ? isDark
+                          ? "bg-slate-700/40 cursor-not-allowed text-slate-500"
+                          : "bg-slate-200/60 cursor-not-allowed text-slate-400"
+                        : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:opacity-90 active:scale-95"
+                    }`}
+                >
+                  {downloading ? (
+                    <>
+                      <i className="fas fa-check-circle text-xl"></i>
+                      <span>Download Started!</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-download text-xl"></i>
+                      <span>Download Now</span>
+                    </>
+                  )}
+                </button>
 
-              {/* New URL button */}
-              <button
-                onClick={resetAll}
-                className={`w-full py-1.5 xs:py-2 rounded-lg font-semibold text-xs xs:text-sm transition-all border ${isDark
-                    ? "bg-slate-700/50 hover:bg-slate-700/70 text-slate-200 border-slate-600/50"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
-                  }`}
-              >
-                ➕ Download Another
-              </button>
+                {/* Download Another Button */}
+                <button
+                  onClick={resetAll}
+                  className={`w-full py-3 xs:py-4 rounded-xl font-semibold text-sm xs:text-base transition-all flex items-center justify-center gap-2 hover:opacity-80 active:scale-95 ${
+                    isDark
+                      ? "bg-slate-800/50 text-slate-200"
+                      : "bg-slate-200/60 text-slate-700"
+                    }`}
+                >
+                  <i className="fas fa-plus"></i>
+                  <span>Download Another Video</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -478,7 +513,7 @@ export default function ToolSection({ toolRef }) {
                   }`}
               >
                 <div className="flex flex-col items-center gap-0.5 xs:gap-1">
-                  <span className="text-base xs:text-lg">⚡</span>
+                  <i className="fas fa-bolt text-base xs:text-lg text-blue-400"></i>
                   <span
                     className={`font-semibold ${isDark ? "text-slate-300" : "text-slate-700"
                       }`}
@@ -487,7 +522,7 @@ export default function ToolSection({ toolRef }) {
                   </span>
                 </div>
                 <div className="flex flex-col items-center gap-0.5 xs:gap-1">
-                  <span className="text-base xs:text-lg">🔒</span>
+                  <i className="fas fa-lock text-base xs:text-lg text-purple-400"></i>
                   <span
                     className={`font-semibold ${isDark ? "text-slate-300" : "text-slate-700"
                       }`}
@@ -496,7 +531,7 @@ export default function ToolSection({ toolRef }) {
                   </span>
                 </div>
                 <div className="flex flex-col items-center gap-0.5 xs:gap-1">
-                  <span className="text-base xs:text-lg">✨</span>
+                  <i className="fas fa-star text-base xs:text-lg text-pink-400"></i>
                   <span
                     className={`font-semibold ${isDark ? "text-slate-300" : "text-slate-700"
                       }`}

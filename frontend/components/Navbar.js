@@ -29,17 +29,17 @@ export default function Navbar({ onStartClick }) {
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
-      className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-md transition-colors duration-300 ${
+      className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-xl transition-all duration-300 ${
         isDark
-          ? "bg-slate-950 border-b border-slate-900/50"
-          : "bg-white border-b border-slate-200"
+          ? "bg-gradient-to-r from-slate-950 via-blue-900/30 to-slate-950 border-b border-blue-500/20"
+          : "bg-gradient-to-r from-slate-50 via-blue-50/30 to-slate-50 border-b border-blue-200/40"
       }`}
     >
       <div className="max-w-7xl mx-auto px-3 xs:px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 xs:h-16 sm:h-17.5 relative">
+        <div className="flex items-center justify-between h-16 xs:h-17 relative">
           {/* Logo */}
           <div className="flex items-center gap-1.5 xs:gap-2">
-            <div className="text-lg xs:text-xl sm:text-2xl font-black bg-linear-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+            <div className="text-lg xs:text-xl sm:text-2xl font-black bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
               MediaDL
             </div>
           </div>
@@ -50,7 +50,7 @@ export default function Navbar({ onStartClick }) {
               <button
                 key={link.label}
                 onClick={() => handleNavClick(link.href)}
-                className={`text-xs sm:text-sm lg:text-base transition-colors duration-200 font-medium whitespace-nowrap flex items-center ${
+                className={`text-xs sm:text-sm lg:text-base transition-colors duration-200 font-medium whitespace-nowrap ${
                   isDark
                     ? "text-slate-400 hover:text-white"
                     : "text-slate-600 hover:text-slate-900"
@@ -62,13 +62,13 @@ export default function Navbar({ onStartClick }) {
           </div>
 
           {/* CTA Button & Theme Toggle */}
-          <div className="flex items-center gap-2 xs:gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2.5 xs:gap-3 sm:gap-3.5">
             {/* Theme Toggle Slider */}
             <motion.button
-              whileHover={{ scale: 1.02 }}
+              whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.98 }}
               onClick={toggleTheme}
-              className={`relative w-12 xs:w-13 sm:w-14 h-6 xs:h-6.5 sm:h-7 rounded-full transition-all duration-300 flex items-center cursor-pointer ${
+              className={`relative w-11 xs:w-12 h-6 rounded-full transition-all duration-300 flex items-center cursor-pointer ${
                 isDark
                   ? "bg-slate-700 border border-slate-600"
                   : "bg-slate-200 border border-slate-300"
@@ -83,7 +83,7 @@ export default function Navbar({ onStartClick }) {
                   stiffness: 500,
                   damping: 30
                 }}
-                className={`absolute top-0.5 w-5 xs:w-6 h-5 xs:h-6 rounded-full shadow-lg flex items-center justify-center ${
+                className={`absolute w-5 h-5 rounded-full shadow-lg flex items-center justify-center transition-colors ${
                   isDark
                     ? "bg-slate-900 left-0.5"
                     : "bg-white right-0.5"
@@ -94,23 +94,23 @@ export default function Navbar({ onStartClick }) {
                   initial={{ rotate: isDark ? -180 : 180, scale: 0 }}
                   animate={{ rotate: 0, scale: 1 }}
                   transition={{ duration: 0.3 }}
-                  className={`text-[10px] xs:text-xs ${
+                  className={`fas text-xs ${
                     isDark
-                      ? "fas fa-sun text-yellow-400"
-                      : "fas fa-moon text-slate-700"
+                      ? "fa-sun text-yellow-400"
+                      : "fa-moon text-slate-700"
                   }`}
                 />
               </motion.div>
             </motion.button>
 
+            {/* Start Download Button - Subtle */}
             <motion.button
               whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.98 }}
+              whileTap={{ scale: 0.95 }}
               onClick={onStartClick}
-              className="hidden sm:inline-flex items-center justify-center px-3 xs:px-4 sm:px-5 md:px-6 py-1.5 xs:py-2 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold text-xs xs:text-sm lg:text-base transition-all duration-200 active:scale-95 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 whitespace-nowrap text-white"
+              className="hidden sm:inline-flex items-center justify-center px-3 xs:px-4 sm:px-5 py-1.5 xs:py-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold text-xs xs:text-sm transition-all duration-200 active:scale-95 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 whitespace-nowrap text-white"
             >
-              <span className="hidden md:inline">Start Download</span>
-              <span className="md:hidden">Start</span>
+              Start Download
             </motion.button>
 
             {/* Mobile Menu Button */}
@@ -123,7 +123,7 @@ export default function Navbar({ onStartClick }) {
               }`}
               aria-label="Toggle menu"
             >
-              {menuOpen ? <span className="inline-block text-xl">✕</span> : <span className="inline-block text-xl">☰</span>}
+              <i className={`fas ${menuOpen ? "fa-times" : "fa-bars"}`}></i>
             </button>
           </div>
         </div>
@@ -154,7 +154,7 @@ export default function Navbar({ onStartClick }) {
                 setMenuOpen(false);
                 if (onStartClick) onStartClick();
               }}
-              className="sm:hidden w-full mt-3 px-4 py-2.5 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold text-sm transition-all duration-200 active:scale-95 shadow-lg shadow-blue-500/20 text-white"
+              className="sm:hidden w-full mt-3 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold text-sm transition-all duration-200 active:scale-95 shadow-lg shadow-blue-500/20 text-white"
             >
               Start Download
             </button>
