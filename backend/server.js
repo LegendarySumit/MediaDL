@@ -55,26 +55,37 @@ function initCookies() {
 
 initCookies();
 
-// ─── Utility: detect if error is due to invalid/rotated cookies ──────────────
+// ─── Utility: detect if error is due to invalid/rotated cookies or bot block ─
 function isCookieError(msg) {
     return msg.includes('no longer valid') ||
            msg.includes('cookies are no longer') ||
            msg.includes('Sign in to confirm') ||
-           msg.includes('bot');
+           msg.includes('bot') ||
+           msg.includes('account has been terminated') ||
+           msg.includes('Please sign in');
 }
 
-// ─── Utility: build base yt-dlp flags ─────────────────────────────────────────
-function getBaseFlags(useCookies = true) {
+// ─── Player client strategies (tried in order) ────────────────────────────────
+const PLAYER_CLIENTS = [
+    'tv_embedded',  // Often works - doesn't require auth
+    'android',      // Mobile client
+    'web',          // Standard web client
+    'mweb',         // Mobile web
+];
+
+// ─── Utility: build base yt-dlp flags with player client ─────────────────────
+function getBaseFlags(useCookies = true, playerClient = 'tv_embedded') {
     const isWindows = process.platform === 'win32';
     const flags = [
         '--no-check-certificates',
+        '-U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"',
     ];
 
-    // Use appropriate quoting for the OS
+    // Use different player clients to bypass bot detection
     if (isWindows) {
-        flags.push('--extractor-args "youtube:player_client=android,web"');
+        flags.push(`--extractor-args "youtube:player_client=${playerClient}"`);
     } else {
-        flags.push("--extractor-args 'youtube:player_client=android,web'");
+        flags.push(`--extractor-args 'youtube:player_client=${playerClient}'`);
     }
 
     // Only use cookies if they exist AND useCookies is true
@@ -89,7 +100,7 @@ function getBaseFlags(useCookies = true) {
     return flags.join(' ');
 }
 
-// ─── Utility: run yt-dlp command with auto-retry on cookie failure ────────────
+// ─── Utility: run yt-dlp with multi-strategy fallback ───────────────────────
 function runYtDlp(args, timeoutMs = 120000) {
     const bin = getYtDlpBinary();
     const isWindows = process.platform === 'win32';
@@ -97,38 +108,42 @@ function runYtDlp(args, timeoutMs = 120000) {
         ? { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
         : { shell: '/bin/sh', maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs };
 
-    return new Promise((resolve, reject) => {
-        // Try with cookies first
-        const cmdWithCookies = `${bin} ${getBaseFlags(true)} ${args}`;
-        
-        exec(cmdWithCookies, shellOpts, (err, stdout, stderr) => {
-            // If no error, return success
-            if (!err) {
-                return resolve(stdout.trim());
-            }
+    // Build all attempts: each client with cookies first, then without
+    const attempts = [];
+    for (const client of PLAYER_CLIENTS) {
+        if (COOKIE_FILE) {
+            attempts.push({ client, useCookies: true });
+        }
+        attempts.push({ client, useCookies: false });
+    }
 
-            const msg = stderr || err.message || '';
-            
-            // If it's a cookie error and we have cookies, retry without them
-            if (isCookieError(msg) && COOKIE_FILE) {
-                console.warn('[yt-dlp] Cookies appear invalid or rotated. Retrying without cookies...');
-                const cmdWithoutCookies = `${bin} ${getBaseFlags(false)} ${args}`;
-                
-                exec(cmdWithoutCookies, shellOpts, (retryErr, retryStdout, retrySterr) => {
-                    if (retryErr) {
-                        // Still failed without cookies
-                        reject(new Error(retrySterr || retryErr.message));
-                    } else {
-                        console.log('[yt-dlp] Success without cookies');
-                        resolve(retryStdout.trim());
-                    }
-                });
-            } else {
-                // Not a cookie error, or no cookies to retry with
-                reject(new Error(msg));
-            }
+    function tryNext(index) {
+        if (index >= attempts.length) {
+            return Promise.reject(new Error(
+                'YouTube is blocking this server\'s IP. Try using a different video source or enable fresh cookies.'
+            ));
+        }
+
+        const { client, useCookies } = attempts[index];
+        const cmd = `${bin} ${getBaseFlags(useCookies, client)} ${args}`;
+
+        return new Promise((resolve, reject) => {
+            exec(cmd, shellOpts, (err, stdout, stderr) => {
+                if (!err) {
+                    console.log(`[yt-dlp] ✅ Success with client=${client} cookies=${useCookies}`);
+                    return resolve(stdout.trim());
+                }
+
+                const msg = stderr || err.message || '';
+                console.warn(`[yt-dlp] ⚠️  client=${client} failed: ${msg.split('\n')[0]}`);
+
+                // Try next strategy
+                tryNext(index + 1).then(resolve).catch(reject);
+            });
         });
-    });
+    }
+
+    return tryNext(0);
 }
 
 // ─── Health check ─────────────────────────────────────────────────────────────
