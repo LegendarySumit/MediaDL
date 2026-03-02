@@ -93,7 +93,7 @@ export default function FAQ() {
               isDark ? "text-slate-400" : "text-slate-600"
             }`}
           >
-            Got questions? We've got answers
+            Got questions? We&apos;ve got answers
           </motion.p>
         </div>
 
