@@ -55,8 +55,16 @@ function initCookies() {
 
 initCookies();
 
+// ─── Utility: detect if error is due to invalid/rotated cookies ──────────────
+function isCookieError(msg) {
+    return msg.includes('no longer valid') ||
+           msg.includes('cookies are no longer') ||
+           msg.includes('Sign in to confirm') ||
+           msg.includes('bot');
+}
+
 // ─── Utility: build base yt-dlp flags ─────────────────────────────────────────
-function getBaseFlags() {
+function getBaseFlags(useCookies = true) {
     const isWindows = process.platform === 'win32';
     const flags = [
         '--no-check-certificates',
@@ -69,7 +77,8 @@ function getBaseFlags() {
         flags.push("--extractor-args 'youtube:player_client=android,web'");
     }
 
-    if (COOKIE_FILE) {
+    // Only use cookies if they exist AND useCookies is true
+    if (useCookies && COOKIE_FILE) {
         if (isWindows) {
             flags.push(`--cookies "${COOKIE_FILE}"`);
         } else {
@@ -80,18 +89,44 @@ function getBaseFlags() {
     return flags.join(' ');
 }
 
-// ─── Utility: run yt-dlp command ─────────────────────────────────────────────
+// ─── Utility: run yt-dlp command with auto-retry on cookie failure ────────────
 function runYtDlp(args, timeoutMs = 120000) {
-    return new Promise((resolve, reject) => {
-        const bin = getYtDlpBinary();
-        const cmd = `${bin} ${getBaseFlags()} ${args}`;
-        const shellOpts = process.platform === 'win32'
-            ? { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
-            : { shell: '/bin/sh', maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs };
+    const bin = getYtDlpBinary();
+    const isWindows = process.platform === 'win32';
+    const shellOpts = isWindows
+        ? { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
+        : { shell: '/bin/sh', maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs };
 
-        exec(cmd, shellOpts, (err, stdout, stderr) => {
-            if (err) reject(new Error(stderr || err.message));
-            else resolve(stdout.trim());
+    return new Promise((resolve, reject) => {
+        // Try with cookies first
+        const cmdWithCookies = `${bin} ${getBaseFlags(true)} ${args}`;
+        
+        exec(cmdWithCookies, shellOpts, (err, stdout, stderr) => {
+            // If no error, return success
+            if (!err) {
+                return resolve(stdout.trim());
+            }
+
+            const msg = stderr || err.message || '';
+            
+            // If it's a cookie error and we have cookies, retry without them
+            if (isCookieError(msg) && COOKIE_FILE) {
+                console.warn('[yt-dlp] Cookies appear invalid or rotated. Retrying without cookies...');
+                const cmdWithoutCookies = `${bin} ${getBaseFlags(false)} ${args}`;
+                
+                exec(cmdWithoutCookies, shellOpts, (retryErr, retryStdout, retrySterr) => {
+                    if (retryErr) {
+                        // Still failed without cookies
+                        reject(new Error(retrySterr || retryErr.message));
+                    } else {
+                        console.log('[yt-dlp] Success without cookies');
+                        resolve(retryStdout.trim());
+                    }
+                });
+            } else {
+                // Not a cookie error, or no cookies to retry with
+                reject(new Error(msg));
+            }
         });
     });
 }
