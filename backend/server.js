@@ -25,13 +25,13 @@ function isFfmpegAvailable() {
     }
 }
 
-// ─── Cookie auth setup ────────────────────────────────────────────────────────
+// ─── Cookie auth setup ──────────────────────────────────────────────────────────
 let COOKIE_FILE = null;
 
 function initCookies() {
     const raw = process.env.YOUTUBE_COOKIES;
     if (!raw) {
-        console.log('⚠️  YOUTUBE_COOKIES env var not set — running cookie-free mode.');
+        console.log('⚠️  YOUTUBE_COOKIES env var not set — YouTube may block requests from server IPs.');
         return;
     }
     try {
@@ -44,9 +44,10 @@ function initCookies() {
         } catch {
             cookieContent = raw;
         }
+
         COOKIE_FILE = path.join(os.tmpdir(), `yt_cookies_${crypto.randomBytes(6).toString('hex')}.txt`);
         fs.writeFileSync(COOKIE_FILE, cookieContent, 'utf8');
-        console.log('✅ YouTube cookies loaded.');
+        console.log('✅ YouTube cookies loaded from YOUTUBE_COOKIES env var.');
     } catch (e) {
         console.error('❌ Failed to write cookie file:', e.message);
     }
@@ -54,100 +55,45 @@ function initCookies() {
 
 initCookies();
 
-// ─── Player client strategies (tried in order) ────────────────────────────────
-// Each strategy targets a different YouTube internal player.
-// tv_embedded + mweb don't require login and bypass bot checks on datacenter IPs.
-// ios/android are authenticated clients that often work when web clients are blocked.
-const STRATEGIES = [
-    { client: 'tv_embedded',         skipDash: true  },
-    { client: 'mweb',                skipDash: false },
-    { client: 'android',             skipDash: false },
-    { client: 'ios',                 skipDash: false },
-    { client: 'web_creator',         skipDash: false },
-];
-
-function buildFlags(client, skipDash, useCookies = true) {
+// ─── Utility: build base yt-dlp flags ─────────────────────────────────────────
+function getBaseFlags() {
     const isWindows = process.platform === 'win32';
-    const skipPart = skipDash ? ';skip=dash' : '';
-    const extractorArgs = `youtube:player_client=${client}${skipPart}`;
-
     const flags = [
         '--no-check-certificates',
-        '--no-warnings',
-        isWindows
-            ? `--extractor-args "${extractorArgs}"`
-            : `--extractor-args '${extractorArgs}'`,
-        // Spoof as Chrome — helps with some geo/bot checks
-        '--add-header "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"',
-        '--add-header "Accept-Language:en-US,en;q=0.9"',
     ];
 
-    // Only attach cookies if they exist AND useCookies is true
-    if (useCookies && COOKIE_FILE) {
+    // Use appropriate quoting for the OS
+    if (isWindows) {
+        flags.push('--extractor-args "youtube:player_client=android,web"');
+    } else {
+        flags.push("--extractor-args 'youtube:player_client=android,web'");
+    }
+
+    if (COOKIE_FILE) {
         if (isWindows) {
             flags.push(`--cookies "${COOKIE_FILE}"`);
         } else {
-            const safe = COOKIE_FILE.replace(/'/g, "'\\''");
-            flags.push(`--cookies '${safe}'`);
+            const safeCookiePath = COOKIE_FILE.replace(/'/g, "'\\''");
+            flags.push(`--cookies '${safeCookiePath}'`);
         }
     }
-
     return flags.join(' ');
 }
 
-// ─── Utility: run yt-dlp with automatic strategy fallback ────────────────────
-// Tries each player client in order. If cookies cause an error (rotated/invalid),
-// automatically retries without cookies before moving to the next client.
+// ─── Utility: run yt-dlp command ─────────────────────────────────────────────
 function runYtDlp(args, timeoutMs = 120000) {
-    const bin = getYtDlpBinary();
-    const isWindows = process.platform === 'win32';
-    const shellOpts = isWindows
-        ? { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
-        : { shell: '/bin/sh', maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs };
+    return new Promise((resolve, reject) => {
+        const bin = getYtDlpBinary();
+        const cmd = `${bin} ${getBaseFlags()} ${args}`;
+        const shellOpts = process.platform === 'win32'
+            ? { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
+            : { shell: '/bin/sh', maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs };
 
-    const isCookieError = (msg) =>
-        msg.includes('no longer valid') ||
-        msg.includes('cookies are no longer') ||
-        msg.includes('Sign in to confirm') ||
-        msg.includes('bot') ||
-        msg.includes('This video is not available');
-
-    // Build attempt list: [strategy+cookies, strategy-no-cookies] for each strategy
-    const attempts = [];
-    for (const s of STRATEGIES) {
-        if (COOKIE_FILE) attempts.push({ ...s, useCookies: true });
-        attempts.push({ ...s, useCookies: false });
-    }
-
-    function tryNext(index) {
-        if (index >= attempts.length) {
-            return Promise.reject(new Error(
-                'All player clients failed. YouTube is blocking this server\'s IP. ' +
-                'Try refreshing cookies or use a different video source.'
-            ));
-        }
-        const { client, skipDash, useCookies } = attempts[index];
-        const flags = buildFlags(client, skipDash, useCookies);
-        const cmd = `${bin} ${flags} ${args}`;
-
-        console.log(`[yt-dlp] Trying client=${client} cookies=${useCookies}`);
-
-        return new Promise((resolve, reject) => {
-            exec(cmd, shellOpts, (err, stdout, stderr) => {
-                if (!err) return resolve(stdout.trim());
-                const msg = stderr || err.message || '';
-                // If it's a bot/cookie error, try next strategy
-                if (isCookieError(msg)) {
-                    console.warn(`[yt-dlp] client=${client} blocked — trying next strategy`);
-                    return tryNext(index + 1).then(resolve).catch(reject);
-                }
-                // Non-bot error (bad URL, private video, etc.) — fail immediately
-                reject(new Error(msg));
-            });
+        exec(cmd, shellOpts, (err, stdout, stderr) => {
+            if (err) reject(new Error(stderr || err.message));
+            else resolve(stdout.trim());
         });
-    }
-
-    return tryNext(0);
+    });
 }
 
 // ─── Health check ─────────────────────────────────────────────────────────────
@@ -287,7 +233,7 @@ app.get('/api/info', async (req, res) => {
 
         res.json({
             title: info.title,
-            thumbnail: info.thumbnail || (info.thumbnails && info.thumbnails[0]?.url) || null,
+            thumbnail: info.thumbnail,
             duration: info.duration,
             duration_string: info.duration_string || formatDuration(info.duration),
             uploader: info.uploader || info.channel || 'Unknown',
@@ -297,7 +243,7 @@ app.get('/api/info', async (req, res) => {
             webpage_url: info.webpage_url || url,
             extractor: info.extractor_key || info.extractor || 'Unknown',
             ffmpeg,
-            formats: presets,
+            formats: [...presets, ...formats.slice(0, 18)],
         });
     } catch (err) {
         console.error('Info error:', err.message);
