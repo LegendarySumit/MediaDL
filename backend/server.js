@@ -12,6 +12,8 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// ─── FIXED: Proper server structure with Invidious fallback ─────────────────
+
 // ─── Utility: find yt-dlp binary ─────────────────────────────────────────────
 function getYtDlpBinary() { return 'yt-dlp'; }
 
@@ -29,9 +31,18 @@ function isFfmpegAvailable() {
 let COOKIE_FILE = null;
 
 function initCookies() {
+    // First, try to use cookies from Downloads folder directly
+    const downloadsPath = path.join(os.homedir(), 'Downloads', 'cookies.txt');
+    if (fs.existsSync(downloadsPath)) {
+        COOKIE_FILE = downloadsPath;
+        console.log('✅ Using cookies from:', downloadsPath);
+        return;
+    }
+
+    // Fallback to env var
     const raw = process.env.YOUTUBE_COOKIES;
     if (!raw) {
-        console.log('⚠️  YOUTUBE_COOKIES env var not set — YouTube may block requests from server IPs.');
+        console.log('⚠️  No cookies found (env var or Downloads/cookies.txt)');
         return;
     }
     try {
@@ -55,6 +66,19 @@ function initCookies() {
 
 initCookies();
 
+// ─── Proxy setup ────────────────────────────────────────────────────────────────
+let PROXY_URL = null;
+function initProxy() {
+    const proxy = process.env.YOUTUBE_PROXY || process.env.PROXY;
+    if (proxy) {
+        PROXY_URL = proxy;
+        console.log('✅ Proxy loaded from YOUTUBE_PROXY/PROXY env var.');
+    } else {
+        console.log('⚠️  YOUTUBE_PROXY env var not set — YouTube datacenter IPs may be blocked.');
+    }
+}
+initProxy();
+
 // ─── Utility: detect if error is due to invalid/rotated cookies or bot block ─
 function isCookieError(msg) {
     return msg.includes('no longer valid') ||
@@ -67,21 +91,28 @@ function isCookieError(msg) {
 
 // ─── Player client strategies (tried in order) ────────────────────────────────
 const PLAYER_CLIENTS = [
-    'tv_embedded',  // Often works - doesn't require auth
-    'android',      // Mobile client
-    'web',          // Standard web client
+    'web',          // Standard web client (most reliable)
     'mweb',         // Mobile web
+    'android',      // Mobile client
+    'ios',          // iOS client
 ];
 
 // ─── Utility: build base yt-dlp flags with player client ─────────────────────
-function getBaseFlags(useCookies = true, playerClient = 'tv_embedded') {
+function getBaseFlags(useCookies = true, playerClient = 'web') {
     const isWindows = process.platform === 'win32';
     const flags = [
         '--no-check-certificates',
-        '-U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"',
+        // Use Node.js as JavaScript runtime for YouTube signature solving
+        '--js-runtimes', 'node',
     ];
 
+    // Use proxy if available (residential proxy bypasses YouTube datacenter blocks)
+    if (PROXY_URL) {
+        flags.push(`--proxy "${PROXY_URL}"`);
+    }
+
     // Use different player clients to bypass bot detection
+    // Valid clients: web, android, ios, mweb, tv (NOT tv_embedded anymore)
     if (isWindows) {
         flags.push(`--extractor-args "youtube:player_client=${playerClient}"`);
     } else {
@@ -135,7 +166,13 @@ function runYtDlp(args, timeoutMs = 120000) {
                 }
 
                 const msg = stderr || err.message || '';
-                console.warn(`[yt-dlp] ⚠️  client=${client} failed: ${msg.split('\n')[0]}`);
+                const firstLine = msg.split('\n')[0];
+                console.warn(`[yt-dlp] ⚠️  client=${client} cookies=${useCookies} failed: ${firstLine}`);
+
+                // Check if it's a recoverable error
+                if (firstLine.includes('ERROR') && !firstLine.includes('Unsupported')) {
+                    console.log(`[yt-dlp] → Trying next strategy...`);
+                }
 
                 // Try next strategy
                 tryNext(index + 1).then(resolve).catch(reject);
@@ -146,10 +183,63 @@ function runYtDlp(args, timeoutMs = 120000) {
     return tryNext(0);
 }
 
-// ─── Health check ─────────────────────────────────────────────────────────────
+// ─── GET /api/health ─────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'MediaDL Server is running' });
 });
+
+// ─── DIAGNOSTIC: GET /api/test-ytdlp ─────────────────────────────────────────
+app.get('/api/test-ytdlp', (req, res) => {
+    const { url } = req.query;
+    const testUrl = url || 'https://youtu.be/kPa7bsKwL-c';
+    
+    const bin = getYtDlpBinary();
+    const baseFlags = getBaseFlags(true, 'tv_embedded');
+    const cmd = `${bin} ${baseFlags} --dump-json --no-playlist "${testUrl}"`;
+    
+    console.log('[test-ytdlp] Running command:', cmd.substring(0, 100) + '...');
+    
+    exec(cmd, { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: 120000 }, (err, stdout, stderr) => {
+        if (err) {
+            console.log('[test-ytdlp] Error:', err.message);
+            res.json({
+                success: false,
+                command: cmd.substring(0, 200),
+                error: err.message,
+                stderr: stderr.substring(0, 500)
+            });
+        } else {
+            try {
+                const data = JSON.parse(stdout);
+                res.json({
+                    success: true,
+                    title: data.title,
+                    duration: data.duration,
+                    formats_count: data.formats ? data.formats.length : 0
+                });
+            } catch (e) {
+                res.json({
+                    success: false,
+                    error: 'Failed to parse JSON response',
+                    stderr: stderr.substring(0, 500)
+                });
+            }
+        }
+    });
+});
+
+// ─── Helper: extract YouTube video ID ──────────────────────────────────────────
+function extractVideoId(url) {
+    const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+        /[a-zA-Z0-9_-]{11}/
+    ];
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1] && match[1].length === 11) return match[1];
+    }
+    return null;
+}
 
 // ─── GET /api/cookie-status ───────────────────────────────────────────────────
 app.get('/api/cookie-status', (req, res) => {
@@ -159,6 +249,17 @@ app.get('/api/cookie-status', (req, res) => {
         hint: COOKIE_FILE
             ? 'YouTube cookies are active. Bot detection should be bypassed.'
             : 'No cookies loaded. Set YOUTUBE_COOKIES env var to fix bot detection.',
+    });
+});
+
+// ─── GET /api/proxy-status ────────────────────────────────────────────────────
+app.get('/api/proxy-status', (req, res) => {
+    res.json({
+        proxy_active: !!PROXY_URL,
+        proxy_url: PROXY_URL ? '[active-residential-proxy]' : null,
+        hint: PROXY_URL
+            ? 'Residential proxy is active. YouTube datacenter blocks should be bypassed.'
+            : 'No proxy loaded. Set YOUTUBE_PROXY env var to bypass YouTube datacenter IP blocks.',
     });
 });
 
@@ -180,10 +281,34 @@ app.get('/api/info', async (req, res) => {
 
     const ffmpeg = isFfmpegAvailable();
 
-    try {
-        const raw = await runYtDlp(`--dump-json --no-playlist "${url}"`);
-        const info = JSON.parse(raw);
+    // Try YouTube first, then fallback to Invidious
+    async function tryFetchInfo() {
+        try {
+            // Try direct YouTube
+            const raw = await runYtDlp(`--dump-json --no-playlist "${url}"`);
+            return JSON.parse(raw);
+        } catch (youtubeErr) {
+            console.warn('[api/info] YouTube failed:', youtubeErr.message);
+            
+            // Fallback: Convert to Invidious URL and try
+            const videoId = extractVideoId(url);
+            if (videoId) {
+                try {
+                    console.log('[api/info] Trying Invidious fallback for:', videoId);
+                    const invidiousUrl = `https://invidious.jathn.net/watch?v=${videoId}`;
+                    const raw = await runYtDlp(`--dump-json --no-playlist "${invidiousUrl}"`);
+                    console.log('[api/info] ✅ Invidious success!');
+                    return JSON.parse(raw);
+                } catch (invErr) {
+                    console.warn('[api/info] Invidious also failed:', invErr.message);
+                }
+            }
+            throw youtubeErr;
+        }
+    }
 
+    try {
+        const info = await tryFetchInfo();
         const rawFormats = info.formats || [];
 
         // ── Build smart merged format list ──────────────────────────────────
@@ -323,18 +448,45 @@ app.get('/api/download', async (req, res) => {
         ? '-x --audio-format mp3 --audio-quality 0'
         : mergeFlag;
 
-    const ytdlpArgs = [
-        `-o "${outputTemplate}"`,
-        `-f "${formatId}"`,
-        '--no-playlist',
-        '--no-warnings',
-        postProcess,
-        `"${url}"`,
-    ].filter(Boolean).join(' ');
+    async function tryDownload(downloadUrl) {
+        const ytdlpArgs = [
+            `-o "${outputTemplate}"`,
+            `-f "${formatId}"`,
+            '--no-playlist',
+            '--no-warnings',
+            postProcess,
+            `"${downloadUrl}"`,
+        ].filter(Boolean).join(' ');
+
+        return runYtDlp(ytdlpArgs, 300000);
+    }
 
     try {
-        console.log(`[download] Starting: format=${formatId}, ffmpeg=${ffmpeg}`);
-        await runYtDlp(ytdlpArgs, 300000); // 5 min timeout for large files
+        console.log(`[download] Starting: format=${formatId}, ffmpeg=${ffmpeg}, url=${url}`);
+        
+        try {
+            // Try YouTube first
+            await tryDownload(url);
+            console.log('[download] ✅ YouTube download success');
+        } catch (youtubeErr) {
+            console.warn('[download] YouTube failed:', youtubeErr.message);
+            
+            // Fallback to Invidious
+            const videoId = extractVideoId(url);
+            if (videoId) {
+                try {
+                    const invidiousUrl = `https://invidious.jathn.net/watch?v=${videoId}`;
+                    console.log('[download] Trying Invidious fallback for:', videoId);
+                    await tryDownload(invidiousUrl);
+                    console.log('[download] ✅ Invidious download success');
+                } catch (invErr) {
+                    console.warn('[download] Invidious also failed:', invErr.message);
+                    throw youtubeErr;
+                }
+            } else {
+                throw youtubeErr;
+            }
+        }
 
         // Find the output file by our unique prefix
         const allFiles = fs.readdirSync(tmpDir);
@@ -406,9 +558,13 @@ function getMimeType(ext) {
 app.listen(PORT, () => {
     console.log(`\n🚀 MediaDL Server running at http://localhost:${PORT}`);
     console.log(`🎬 ffmpeg: ${isFfmpegAvailable() ? '✅ available (merging enabled)' : '❌ not found (install ffmpeg to enable merging)'}`);
+    console.log(`🔐 Cookies: ${COOKIE_FILE ? '✅ loaded' : '❌ not set'}`);
+    console.log(`🌐 Proxy: ${PROXY_URL ? '✅ active' : '❌ not set (YouTube datacenter IPs may be blocked)'}`);
     console.log(`\nEndpoints:`);
     console.log(`  GET /api/health`);
     console.log(`  GET /api/info?url=<video_url>`);
     console.log(`  GET /api/download?url=<video_url>&format=<format_id>`);
-    console.log(`  GET /api/check-ytdlp\n`);
+    console.log(`  GET /api/check-ytdlp`);
+    console.log(`  GET /api/cookie-status`);
+    console.log(`  GET /api/proxy-status\n`);
 });
