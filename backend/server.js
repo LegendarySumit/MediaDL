@@ -254,6 +254,19 @@ app.get('/api/test-ytdlp', (req, res) => {
     });
 });
 
+// ─── Helper: detect platform from URL ──────────────────────────────────────────
+function detectPlatform(url) {
+    if (!url) return 'unknown';
+    const urlLower = url.toLowerCase();
+    
+    if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) return 'youtube';
+    if (urlLower.includes('instagram.com') || urlLower.includes('instagr.am')) return 'instagram';
+    if (urlLower.includes('tiktok.com') || urlLower.includes('vm.tiktok')) return 'tiktok';
+    if (urlLower.includes('facebook.com') || urlLower.includes('fb.watch')) return 'facebook';
+    
+    return 'other';
+}
+
 // ─── Helper: extract YouTube video ID ──────────────────────────────────────────
 function extractVideoId(url) {
     const patterns = [
@@ -306,30 +319,17 @@ app.get('/api/info', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
     const ffmpeg = isFfmpegAvailable();
+    const platform = detectPlatform(url);
 
-    // Try YouTube first, then fallback to Invidious
+    // Try to fetch video info - works for YouTube, Instagram, TikTok, etc.
     async function tryFetchInfo() {
         try {
-            // Try direct YouTube
+            // yt-dlp supports many platforms - try directly
             const raw = await runYtDlp(`--dump-json --no-playlist "${url}"`);
             return JSON.parse(raw);
-        } catch (youtubeErr) {
-            console.warn('[api/info] YouTube failed:', youtubeErr.message);
-            
-            // Fallback: Convert to Invidious URL and try
-            const videoId = extractVideoId(url);
-            if (videoId) {
-                try {
-                    console.log('[api/info] Trying Invidious fallback for:', videoId);
-                    const invidiousUrl = `https://invidious.jathn.net/watch?v=${videoId}`;
-                    const raw = await runYtDlp(`--dump-json --no-playlist "${invidiousUrl}"`);
-                    console.log('[api/info] ✅ Invidious success!');
-                    return JSON.parse(raw);
-                } catch (invErr) {
-                    console.warn('[api/info] Invidious also failed:', invErr.message);
-                }
-            }
-            throw youtubeErr;
+        } catch (err) {
+            console.warn(`[api/info] ${platform} extraction failed:`, err.message);
+            throw err;
         }
     }
 
@@ -449,22 +449,30 @@ app.get('/api/info', async (req, res) => {
     } catch (err) {
         console.error('Info error:', err.message);
         
-        // Diagnostic response to help troubleshoot Render deployment
+        // Diagnostic response
         const diagnostic = {
-            error: err.message || 'Failed to fetch video info',
+            error: err.message || `Failed to fetch ${platform} info`,
+            platform: platform,
             diagnostics: {
                 cookies_set: !!process.env.YOUTUBE_COOKIES,
                 proxy_set: !!process.env.YOUTUBE_PROXY,
                 ffmpeg_available: ffmpeg,
-                platform: process.platform,
             }
         };
         
-        // Add hint based on what's missing
-        if (!process.env.YOUTUBE_COOKIES) {
-            diagnostic.hint = 'YOUTUBE_COOKIES env var not set on Render dashboard';
-        } else if (!process.env.YOUTUBE_PROXY) {
-            diagnostic.hint = 'YouTube blocked this IP. Set YOUTUBE_PROXY on Render dashboard';
+        // Add hints based on platform
+        if (platform === 'youtube') {
+            if (!process.env.YOUTUBE_COOKIES) {
+                diagnostic.hint = 'YouTube: Set YOUTUBE_COOKIES env var for better access';
+            } else if (!process.env.YOUTUBE_PROXY) {
+                diagnostic.hint = 'YouTube: Consider setting YOUTUBE_PROXY if IP is blocked';
+            } else {
+                diagnostic.hint = 'YouTube: This video may be restricted or unavailable';
+            }
+        } else if (platform === 'instagram') {
+            diagnostic.hint = 'Instagram: This may require a valid account or the content may be private';
+        } else {
+            diagnostic.hint = `${platform}: This content may be unavailable, private, or region-restricted`;
         }
         
         res.status(500).json(diagnostic);
