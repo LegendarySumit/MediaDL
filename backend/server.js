@@ -527,8 +527,6 @@ app.get('/api/download', async (req, res) => {
         try { child.kill(); } catch { }
     });
 });
-    }
-});
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatBytes(bytes) {
