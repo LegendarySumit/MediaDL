@@ -72,9 +72,10 @@ function initProxy() {
     const proxy = process.env.YOUTUBE_PROXY || process.env.PROXY;
     if (proxy) {
         PROXY_URL = proxy;
-        console.log('✅ Proxy loaded from YOUTUBE_PROXY/PROXY env var.');
+        console.log('✅ Proxy loaded:', proxy.substring(0, 30) + '...');
     } else {
         console.log('⚠️  YOUTUBE_PROXY env var not set — YouTube datacenter IPs may be blocked.');
+        console.log('    To fix: Set YOUTUBE_PROXY="http://us-ca.proxymesh.com:31280" on Render');
     }
 }
 initProxy();
