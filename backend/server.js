@@ -102,11 +102,10 @@ function isCookieError(msg) {
 }
 
 // ─── Player client strategies (tried in order) ────────────────────────────────
+// Optimized for speed: only try the fastest, most reliable clients
 const PLAYER_CLIENTS = [
     'web',          // Standard web client (most reliable)
-    'mweb',         // Mobile web
-    'android',      // Mobile client
-    'ios',          // iOS client
+    'mweb',         // Mobile web (faster fallback)
 ];
 
 // ─── Utility: build base yt-dlp flags with player client ─────────────────────
@@ -116,11 +115,16 @@ function getBaseFlags(useCookies = true, playerClient = 'web') {
         '--no-check-certificates',
         // Use Node.js as JavaScript runtime for YouTube signature solving
         '--js-runtimes', 'node',
+        // Optimize for speed: faster socket timeout
+        '--socket-timeout', '10',
+        // Limit retries to speed up failure
+        '--retries', '1',
     ];
 
     // Use proxy if available (residential proxy bypasses YouTube datacenter blocks)
     if (PROXY_URL) {
-        flags.push(`--proxy "${PROXY_URL}"`);
+        // Don't add quotes - yt-dlp handles the URL directly
+        flags.push('--proxy', PROXY_URL);
     }
 
     // Use different player clients to bypass bot detection
@@ -144,19 +148,29 @@ function getBaseFlags(useCookies = true, playerClient = 'web') {
 }
 
 // ─── Utility: run yt-dlp with multi-strategy fallback ───────────────────────
-function runYtDlp(args, timeoutMs = 120000) {
+function runYtDlp(args, timeoutMs = 45000) {
     const bin = getYtDlpBinary();
     const isWindows = process.platform === 'win32';
     const shellOpts = isWindows
         ? { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
         : { shell: '/bin/sh', maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs };
 
-    // Build all attempts: each client with cookies first, then without
+    // Build all attempts: prioritize cookies (faster), then fallback
+    // OPTIMIZED: Try only the 2 most reliable clients first (web + mweb), then others
     const attempts = [];
-    for (const client of PLAYER_CLIENTS) {
-        if (COOKIE_FILE) {
-            attempts.push({ client, useCookies: true });
-        }
+    const primaryClients = ['web', 'mweb'];  // Most reliable - try with cookies
+    const fallbackClients = ['android', 'ios'];  // Fallback options
+    
+    // Primary attempts with cookies (fastest)
+    for (const client of primaryClients) {
+        attempts.push({ client, useCookies: true });
+    }
+    // Secondary fallback with cookies
+    for (const client of fallbackClients) {
+        attempts.push({ client, useCookies: true });
+    }
+    // Only try without cookies if all with-cookies attempts fail
+    for (const client of primaryClients) {
         attempts.push({ client, useCookies: false });
     }
 
@@ -464,95 +478,55 @@ app.get('/api/download', async (req, res) => {
 
     const formatId = format || 'bestvideo+bestaudio/best';
     const safeTitle = (title || 'video').replace(/[^a-zA-Z0-9 _\-]/g, '_').slice(0, 80);
-    const tmpDir = os.tmpdir();
     const ffmpeg = isFfmpegAvailable();
 
-    const uniquePrefix = `mediadl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const outputTemplate = path.join(tmpDir, `${uniquePrefix}.%(ext)s`);
-
-    const mergeFlag = ffmpeg ? '--merge-output-format mp4' : '';
-    const audioFlags = ffmpeg ? '--audio-multistreams' : '';
-
-    // For audio-only formats, post-process to mp3
+    // Determine output format and headers quickly
     const isAudioOnly = formatId === 'bestaudio/best' || formatId.startsWith('bestaudio');
+    const ext = isAudioOnly ? 'mp3' : 'mp4';
+    const downloadName = `${safeTitle}.${ext}`;
+    const mimeType = getMimeType(ext);
+
+    // Set response headers IMMEDIATELY
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Transfer-Encoding', 'binary');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+    // Build optimized yt-dlp command for streaming
     const postProcess = isAudioOnly && ffmpeg
         ? '-x --audio-format mp3 --audio-quality 0'
-        : mergeFlag;
+        : ffmpeg ? '--merge-output-format mp4' : '';
 
-    async function tryDownload(downloadUrl) {
-        const ytdlpArgs = [
-            `-o "${outputTemplate}"`,
-            `-f "${formatId}"`,
-            '--no-playlist',
-            '--no-warnings',
-            postProcess,
-            `"${downloadUrl}"`,
-        ].filter(Boolean).join(' ');
+    const ytdlpArgs = [
+        '-o -',  // Stream to stdout
+        `-f "${formatId}"`,
+        '--no-playlist',
+        '--no-warnings',
+        '--quiet',  // Less output = faster
+        postProcess,
+        `"${url}"`,
+    ].filter(Boolean).join(' ');
 
-        return runYtDlp(ytdlpArgs, 300000);
-    }
+    console.log(`[download] Streaming: format=${formatId}, url=${url}`);
 
-    try {
-        console.log(`[download] Starting: format=${formatId}, ffmpeg=${ffmpeg}, url=${url}`);
-        
-        try {
-            // Try YouTube first
-            await tryDownload(url);
-            console.log('[download] ✅ YouTube download success');
-        } catch (youtubeErr) {
-            console.warn('[download] YouTube failed:', youtubeErr.message);
-            
-            // Fallback to Invidious
-            const videoId = extractVideoId(url);
-            if (videoId) {
-                try {
-                    const invidiousUrl = `https://invidious.jathn.net/watch?v=${videoId}`;
-                    console.log('[download] Trying Invidious fallback for:', videoId);
-                    await tryDownload(invidiousUrl);
-                    console.log('[download] ✅ Invidious download success');
-                } catch (invErr) {
-                    console.warn('[download] Invidious also failed:', invErr.message);
-                    throw youtubeErr;
-                }
-            } else {
-                throw youtubeErr;
-            }
+    // Stream directly from yt-dlp to client (no temp file)
+    const child = exec(getYtDlpBinary() + ' ' + ytdlpArgs, async (err) => {
+        if (err && !res.headersSent) {
+            console.error('[download] Error:', err.message);
+            try { res.status(500).json({ error: 'Download failed' }); } catch { }
         }
+    });
 
-        // Find the output file by our unique prefix
-        const allFiles = fs.readdirSync(tmpDir);
-        const match = allFiles.find(f => f.startsWith(uniquePrefix));
+    child.stdout.pipe(res);
+    child.stderr.on('data', (data) => {
+        const msg = data.toString();
+        if (msg.includes('ERROR')) console.error('[download]', msg);
+    });
 
-        if (!match) {
-            return res.status(500).json({ error: 'Downloaded file not found. The format may not be available for this video.' });
-        }
-
-        const actualFile = path.join(tmpDir, match);
-        const ext = path.extname(actualFile).slice(1) || 'mp4';
-        const downloadName = `${safeTitle}.${ext}`;
-
-        console.log(`[download] Serving: ${match} (${formatBytes(fs.statSync(actualFile).size)})`);
-
-        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
-        res.setHeader('Content-Type', getMimeType(ext));
-
-        const fileSize = fs.statSync(actualFile).size;
-        if (fileSize) res.setHeader('Content-Length', fileSize);
-
-        const stream = fs.createReadStream(actualFile);
-        stream.pipe(res);
-        stream.on('end', () => { try { fs.unlinkSync(actualFile); } catch { } });
-        stream.on('error', () => { try { fs.unlinkSync(actualFile); } catch { } });
-
-    } catch (err) {
-        console.error('[download] Error:', err.message);
-        // Clean up partial files
-        try {
-            fs.readdirSync(tmpDir)
-                .filter(f => f.startsWith(uniquePrefix))
-                .forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch { } });
-        } catch { }
-        res.status(500).json({ error: err.message || 'Download failed' });
+    res.on('close', () => {
+        try { child.kill(); } catch { }
+    });
+});
     }
 });
 
