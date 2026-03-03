@@ -9,7 +9,18 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// ─── CORS Configuration for Vercel + Render ──────────────────────────────────
+const corsOptions = {
+    origin: [
+        'http://localhost:3000',           // Local dev
+        'https://media-dl.vercel.app',     // Vercel frontend
+        'https://mediadl.onrender.com',    // Render backend (self)
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ─── FIXED: Proper server structure with Invidious fallback ─────────────────
