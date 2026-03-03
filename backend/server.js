@@ -423,7 +423,26 @@ app.get('/api/info', async (req, res) => {
         });
     } catch (err) {
         console.error('Info error:', err.message);
-        res.status(500).json({ error: err.message || 'Failed to fetch video info' });
+        
+        // Diagnostic response to help troubleshoot Render deployment
+        const diagnostic = {
+            error: err.message || 'Failed to fetch video info',
+            diagnostics: {
+                cookies_set: !!process.env.YOUTUBE_COOKIES,
+                proxy_set: !!process.env.YOUTUBE_PROXY,
+                ffmpeg_available: ffmpeg,
+                platform: process.platform,
+            }
+        };
+        
+        // Add hint based on what's missing
+        if (!process.env.YOUTUBE_COOKIES) {
+            diagnostic.hint = 'YOUTUBE_COOKIES env var not set on Render dashboard';
+        } else if (!process.env.YOUTUBE_PROXY) {
+            diagnostic.hint = 'YouTube blocked this IP. Set YOUTUBE_PROXY on Render dashboard';
+        }
+        
+        res.status(500).json(diagnostic);
     }
 });
 
