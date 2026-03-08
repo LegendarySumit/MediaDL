@@ -87,13 +87,13 @@ export default function Hero({ onStartClick }) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut", delay: 0.5 }}
-          className="flex flex-col xs:flex-row gap-3 xs:gap-4 justify-center items-center mb-8 xs:mb-10 sm:mb-12"
+          className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center mb-8 sm:mb-12"
         >
           <motion.button
             whileHover={{ scale: 1.05, boxShadow: "0 0 30px rgba(59, 130, 246, 0.5)" }}
             whileTap={{ scale: 0.95 }}
             onClick={onStartClick}
-            className="w-full xs:w-auto max-w-xs px-6 xs:px-7 sm:px-8 py-3 xs:py-3.5 sm:py-4 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-bold text-base xs:text-lg transition-all duration-200 active:scale-95 shadow-2xl shadow-blue-500/30 hover:shadow-blue-500/50 flex items-center justify-center gap-2 text-white"
+            className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 active:scale-95 shadow-2xl shadow-blue-500/30 hover:shadow-blue-500/50 flex items-center justify-center gap-2 text-white"
           >
             <span className="text-lg xs:text-xl">🚀</span>
             <span>Try It Now</span>
@@ -102,7 +102,7 @@ export default function Hero({ onStartClick }) {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => document.querySelector("#how-it-works").scrollIntoView({ behavior: "smooth" })}
-            className={`w-full xs:w-auto max-w-xs px-6 xs:px-7 sm:px-8 py-3 xs:py-3.5 sm:py-4 rounded-lg font-bold text-base xs:text-lg transition-all duration-200 border flex items-center justify-center gap-2 ${
+            className={`w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 border flex items-center justify-center gap-2 ${
               isDark
                 ? "bg-slate-800/50 hover:bg-slate-800 text-white border-slate-700/50 hover:border-slate-600"
                 : "bg-white/50 hover:bg-white text-slate-900 border-slate-300/50 hover:border-slate-400"
