@@ -11,8 +11,8 @@ export default function Hero({ onStartClick }) {
   return (
     <section className={`min-h-screen pt-16 xs:pt-20 sm:pt-24 md:pt-20 flex items-center justify-center px-3 xs:px-4 sm:px-6 relative overflow-hidden transition-colors duration-300 ${
       isDark
-        ? "bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950"
-        : "bg-gradient-to-br from-blue-50 via-white to-slate-50"
+        ? "bg-linear-to-br from-slate-950 via-slate-900 to-slate-950"
+        : "bg-linear-to-br from-blue-50 via-white to-slate-50"
     }`}>
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -40,7 +40,7 @@ export default function Hero({ onStartClick }) {
           }`}
         >
           <span>Download Your </span>
-          <span className="bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+          <span className="bg-linear-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent">
             Favorite Media
           </span>
           <span> in Seconds</span>
@@ -93,7 +93,7 @@ export default function Hero({ onStartClick }) {
             whileHover={{ scale: 1.05, boxShadow: "0 0 30px rgba(59, 130, 246, 0.5)" }}
             whileTap={{ scale: 0.95 }}
             onClick={onStartClick}
-            className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 active:scale-95 shadow-2xl shadow-blue-500/30 hover:shadow-blue-500/50 flex items-center justify-center gap-2 text-white"
+            className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-lg font-semibold text-sm sm:text-base transition-all duration-200 active:scale-95 shadow-2xl shadow-blue-500/30 hover:shadow-blue-500/50 flex items-center justify-center gap-2 text-white"
           >
             <span className="text-lg xs:text-xl">🚀</span>
             <span>Try It Now</span>

@@ -35,8 +35,8 @@ export default function Features() {
       id="features"
       className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${
         isDark
-          ? "bg-gradient-to-b from-slate-950 via-slate-900/50 to-slate-950"
-          : "bg-gradient-to-b from-slate-50/50 to-white"
+          ? "bg-linear-to-b from-slate-950 via-slate-900/50 to-slate-950"
+          : "bg-linear-to-b from-slate-50/50 to-white"
       }`}
     >
       <div className="max-w-7xl mx-auto">
@@ -65,8 +65,8 @@ export default function Features() {
             viewport={{ once: true }}
             className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${
               isDark 
-                ? "bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent" 
-                : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
+                ? "bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent" 
+                : "bg-linear-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
             }`}
           >
             Why Choose MediaDL
@@ -117,8 +117,8 @@ export default function Features() {
               {/* Icon */}
               <div className={`w-12 h-12 xs:w-14 xs:h-14 rounded-xl mb-4 xs:mb-5 flex items-center justify-center transition-all duration-300 group-hover:scale-110 ${
                 isDark
-                  ? "bg-gradient-to-br from-blue-500 to-purple-500 text-white group-hover:from-blue-600 group-hover:to-purple-600"
-                  : "bg-gradient-to-br from-blue-200 to-purple-200 text-blue-700 group-hover:from-blue-300 group-hover:to-purple-300"
+                  ? "bg-linear-to-br from-blue-500 to-purple-500 text-white group-hover:from-blue-600 group-hover:to-purple-600"
+                  : "bg-linear-to-br from-blue-200 to-purple-200 text-blue-700 group-hover:from-blue-300 group-hover:to-purple-300"
               }`}>
                 <i className={`fas ${feature.icon} text-lg xs:text-xl`}></i>
               </div>
@@ -136,8 +136,8 @@ export default function Features() {
               {/* Accent Line */}
               <div className={`mt-4 h-0.5 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 ${
                 isDark
-                  ? "bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400"
-                  : "bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"
+                  ? "bg-linear-to-r from-blue-400 via-purple-400 to-pink-400"
+                  : "bg-linear-to-r from-blue-500 via-purple-500 to-pink-500"
               }`}></div>
             </motion.div>
           ))}
