@@ -19,6 +19,9 @@ const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
 const LOGS_DIR = path.join(__dirname, 'logs');
 const QUEUE_NAME = 'media-downloads';
 const DOWNLOAD_TTL_MINUTES = Number(process.env.DOWNLOAD_TTL_MINUTES || 60);
+const YTDLP_INFO_TIMEOUT_MS = Number(process.env.YTDLP_INFO_TIMEOUT_MS || 45000);
+const YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS = Number(process.env.YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS || 120000);
+const IMAGE_PROXY_TIMEOUT_MS = Number(process.env.IMAGE_PROXY_TIMEOUT_MS || 8000);
 const CAPTCHA_TRUST_TTL_MINUTES = Number(process.env.CAPTCHA_TRUST_TTL_MINUTES || 30);
 const CAPTCHA_TRUST_TTL_MS = CAPTCHA_TRUST_TTL_MINUTES * 60 * 1000;
 const QUEUE_DISABLED = process.env.DISABLE_QUEUE === 'true' || process.env.NODE_ENV === 'test';
@@ -270,6 +273,25 @@ function classifyYtDlpError(message) {
   };
 }
 
+function shouldSkipRemainingProxyAttempts(classifiedError) {
+  if (!classifiedError) return false;
+  return classifiedError.code === 'proxy_account_inactive';
+}
+
+function isSafeImageProxyUrl(input) {
+  try {
+    const parsed = new URL(String(input || ''));
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function toImageProxyUrl(sourceUrl) {
+  if (!sourceUrl || !isSafeImageProxyUrl(sourceUrl)) return '';
+  return `/api/image-proxy?url=${encodeURIComponent(sourceUrl)}`;
+}
+
 function detectPlatform(url) {
   if (!url) return 'unknown';
   const urlLower = url.toLowerCase();
@@ -494,8 +516,13 @@ function buildYtArgs(base, options) {
 async function runYtDlp(extraArgs, timeoutMs = 45000) {
   const attempts = getAttemptConfigs();
   let lastErr = 'Unknown extraction error';
+  let skipProxyAttempts = false;
 
   for (const attempt of attempts) {
+    if (skipProxyAttempts && attempt.proxy) {
+      continue;
+    }
+
     const args = buildYtArgs(extraArgs, attempt);
     const output = await new Promise((resolve) => {
       const child = spawn(getYtDlpBinary(), args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false });
@@ -539,6 +566,11 @@ async function runYtDlp(extraArgs, timeoutMs = 45000) {
 
     lastErr = output.message;
     registerExtractionFailure(output.message);
+    const classified = classifyYtDlpError(output.message);
+    if (attempt.proxy && shouldSkipRemainingProxyAttempts(classified)) {
+      skipProxyAttempts = true;
+      logger.warn({ code: classified.code }, 'Skipping remaining proxy attempts for yt-dlp extraction');
+    }
     logger.warn({
       playerClient: attempt.playerClient,
       hasProxy: Boolean(attempt.proxy),
@@ -567,9 +599,14 @@ async function processDownloadJob(job) {
   const outputTemplate = path.join(DOWNLOADS_DIR, `${job.id}-%(title).60s.%(ext)s`);
   const attempts = getAttemptConfigs();
   let lastError = 'Download failed';
+  let skipProxyAttempts = false;
 
   for (let attemptNo = 0; attemptNo < attempts.length; attemptNo += 1) {
     const attempt = attempts[attemptNo];
+    if (skipProxyAttempts && attempt.proxy) {
+      continue;
+    }
+
     const args = buildYtArgs([
       '--newline',
       '--no-playlist',
@@ -589,7 +626,7 @@ async function processDownloadJob(job) {
 
     emitJobUpdate(job.id, {
       status: 'processing',
-      message: `Downloading... attempt ${attemptNo + 1}/${attempts.length}`,
+      message: `Downloading... attempt ${attemptNo + 1}/${attempts.length}${attempt.proxy ? ' via proxy' : ' direct'}`,
     });
 
     const result = await new Promise((resolve) => {
@@ -601,6 +638,13 @@ async function processDownloadJob(job) {
       let stderrBuffer = '';
       let resolvedPath = null;
       let lastPercent = 0;
+      let timedOut = false;
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        try { child.kill('SIGKILL'); } catch {
+        }
+      }, YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS);
 
       const updateProgressFromChunk = (rawChunk) => {
         const lines = rawChunk.replace(/\r/g, '\n').split('\n');
@@ -641,10 +685,16 @@ async function processDownloadJob(job) {
       });
 
       child.on('error', (err) => {
+        clearTimeout(timer);
         resolve({ ok: false, error: err.message, filePath: resolvedPath });
       });
 
       child.on('close', (code) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          resolve({ ok: false, error: `yt-dlp timed out after ${YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS}ms`, filePath: resolvedPath });
+          return;
+        }
         if (code === 0) {
           resolve({ ok: true, filePath: resolvedPath, stderr: stderrBuffer });
           return;
@@ -688,6 +738,11 @@ async function processDownloadJob(job) {
 
     lastError = result.error || 'Unknown download error';
     registerExtractionFailure(lastError);
+    const classified = classifyYtDlpError(lastError);
+    if (attempt.proxy && shouldSkipRemainingProxyAttempts(classified)) {
+      skipProxyAttempts = true;
+      logger.warn({ jobId: job.id, code: classified.code }, 'Skipping remaining proxy attempts for download job');
+    }
     logger.warn({
       jobId: job.id,
       attempt: attemptNo + 1,
@@ -827,6 +882,42 @@ app.get('/api/proxy-status', (req, res) => {
   });
 });
 
+app.get('/api/image-proxy', async (req, res) => {
+  const { url } = req.query;
+  if (!url || !isSafeImageProxyUrl(url)) {
+    return res.status(400).json({ error: 'Valid image URL is required' });
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), IMAGE_PROXY_TIMEOUT_MS);
+
+  try {
+    const upstream = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+
+    if (!upstream.ok) {
+      return res.status(502).json({ error: `Upstream image fetch failed (${upstream.status})` });
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=1800');
+    return res.send(buffer);
+  } catch (error) {
+    const status = error.name === 'AbortError' ? 504 : 502;
+    return res.status(status).json({ error: 'Failed to fetch thumbnail image' });
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 app.get('/api/info', async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -835,7 +926,7 @@ app.get('/api/info', async (req, res) => {
   const platform = detectPlatform(url);
 
   try {
-    const raw = await runYtDlp(['--dump-json', '--no-playlist', url]);
+    const raw = await runYtDlp(['--dump-json', '--no-playlist', url], YTDLP_INFO_TIMEOUT_MS);
     const info = JSON.parse(raw);
     const rawFormats = info.formats || [];
 
@@ -927,7 +1018,8 @@ app.get('/api/info', async (req, res) => {
 
     res.json({
       title: info.title,
-      thumbnail: info.thumbnail,
+      thumbnail: toImageProxyUrl(info.thumbnail) || info.thumbnail,
+      thumbnail_original: info.thumbnail,
       duration: info.duration,
       duration_string: info.duration_string || formatDuration(info.duration),
       uploader: info.uploader || info.channel || 'Unknown',
