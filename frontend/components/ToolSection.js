@@ -23,6 +23,8 @@ export default function ToolSection({ toolRef }) {
   const [captchaSatisfied, setCaptchaSatisfied] = useState(false);
   const [pendingDownloadAfterCaptcha, setPendingDownloadAfterCaptcha] = useState(false);
   const eventSourceRef = useRef(null);
+  const statusPollerRef = useRef(null);
+  const completionHandledRef = useRef(false);
   const turnstileContainerId = "turnstile-captcha-container";
   const {
     executeRecaptcha,
@@ -85,8 +87,106 @@ export default function ToolSection({ toolRef }) {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
+      if (statusPollerRef.current) {
+        clearInterval(statusPollerRef.current);
+        statusPollerRef.current = null;
+      }
     };
   }, []);
+
+  const stopStatusPoller = () => {
+    if (statusPollerRef.current) {
+      clearInterval(statusPollerRef.current);
+      statusPollerRef.current = null;
+    }
+  };
+
+  const handleJobCompleted = async (jobId, payload, titleFallback) => {
+    if (completionHandledRef.current) return;
+    completionHandledRef.current = true;
+    stopStatusPoller();
+
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    const primaryUrl = api.getJobFileUrl(jobId);
+    const fallbackUrl = api.toAbsoluteUrl(payload?.fallbackUrl || "");
+    setDownloadStatus("Finalizing file...");
+    setDownloadProgress(100);
+
+    try {
+      await api.downloadWithFallback([primaryUrl, fallbackUrl], payload?.fileName || titleFallback || "download");
+      setDownloadStatus("Download Started!");
+    } catch (downloadError) {
+      setErrorMsg(downloadError.message || "Download file is unavailable.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleJobFailed = (payload) => {
+    stopStatusPoller();
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setDownloading(false);
+    setErrorMsg(payload?.error || payload?.message || "Download failed. Please try again.");
+    setCaptchaToken(null);
+    resetTurnstile();
+  };
+
+  const startStatusPolling = (jobId, titleFallback) => {
+    stopStatusPoller();
+    let inFlight = false;
+    let queuedTicks = 0;
+
+    statusPollerRef.current = setInterval(async () => {
+      if (inFlight) return;
+      if (completionHandledRef.current) {
+        stopStatusPoller();
+        return;
+      }
+
+      inFlight = true;
+      try {
+        const latest = await api.getJobStatus(jobId);
+        const status = String(latest.status || "").toLowerCase();
+        const progress = Number(latest.progress || 0);
+
+        if (status) {
+          setDownloadStatus(latest.message || latest.status);
+          setDownloadProgress(progress);
+          upsertHistory({
+            jobId,
+            status,
+            progress,
+            error: latest.error || null,
+          });
+        }
+
+        if (status === "queued") {
+          queuedTicks += 1;
+          if (queuedTicks >= 6) {
+            setDownloadStatus("Still queued... preparing worker");
+          }
+        } else {
+          queuedTicks = 0;
+        }
+
+        if (status === "completed") {
+          await handleJobCompleted(jobId, latest, titleFallback);
+        } else if (status === "failed") {
+          handleJobFailed(latest);
+        }
+      } catch {
+      } finally {
+        inFlight = false;
+      }
+    }, 4000);
+  };
 
   useEffect(() => {
     try {
@@ -176,11 +276,13 @@ export default function ToolSection({ toolRef }) {
     setDownloadStatus("Starting...");
 
     try {
+      completionHandledRef.current = false;
       const job = await api.createDownloadJob(url, selectedFormat, videoInfo.title, token || captchaToken);
       const jobId = job.job_id;
       setCaptchaSatisfied(true);
       setActiveJobId(jobId);
       setDownloadStatus(job.message || "Queued...");
+      startStatusPolling(jobId, videoInfo.title);
 
       upsertHistory({
         jobId,
@@ -217,35 +319,14 @@ export default function ToolSection({ toolRef }) {
           });
 
           if (status === "completed") {
-            eventSource.close();
-            eventSourceRef.current = null;
-
-            const primaryUrl = api.getJobFileUrl(jobId);
-            const fallbackUrl = api.toAbsoluteUrl(payload.fallbackUrl || "");
-            setDownloadStatus("Finalizing file...");
-            setDownloadProgress(100);
-
-            (async () => {
-              try {
-                await api.downloadWithFallback([primaryUrl, fallbackUrl], payload.fileName || videoInfo.title || "download");
-                setDownloadStatus("Download Started!");
-              } catch (downloadError) {
-                setErrorMsg(downloadError.message || "Download file is unavailable.");
-              } finally {
-                setDownloading(false);
-              }
-            })();
+            handleJobCompleted(jobId, payload, videoInfo.title);
           }
 
           if (status === "failed") {
-            eventSource.close();
-            eventSourceRef.current = null;
-            setDownloading(false);
-            setErrorMsg(payload.error || payload.message || "Download failed. Please try again.");
-            setCaptchaToken(null);
-            resetTurnstile();
+            handleJobFailed(payload);
           }
         } catch {
+          stopStatusPoller();
           setDownloading(false);
           setErrorMsg("Failed to read download progress update.");
         }
@@ -255,27 +336,20 @@ export default function ToolSection({ toolRef }) {
         try {
           const latest = await api.getJobStatus(jobId);
           if (latest.status === "completed") {
-            const primaryUrl = api.getJobFileUrl(jobId);
-            const fallbackUrl = api.toAbsoluteUrl(latest.fallbackUrl || "");
-            setDownloadStatus("Finalizing file...");
-            setDownloadProgress(100);
-            await api.downloadWithFallback([primaryUrl, fallbackUrl], latest.fileName || videoInfo.title || "download");
-
-            setDownloading(false);
-            setDownloadStatus("Download Started!");
+            await handleJobCompleted(jobId, latest, videoInfo.title);
           } else if (latest.status === "failed") {
-            setDownloading(false);
-            setErrorMsg(latest.error || latest.message || "Download failed. Please try again.");
+            handleJobFailed(latest);
           }
         } catch {
-          setDownloading(false);
-          setErrorMsg("Progress connection lost. Please check job status and retry.");
+          // Keep poller alive as fallback even if SSE channel is interrupted.
+          setDownloadStatus("Connection interrupted, checking status...");
         } finally {
           eventSource.close();
           eventSourceRef.current = null;
         }
       };
     } catch (err) {
+      stopStatusPoller();
       const errMessage = err.message || "Failed to start download job.";
       setDownloading(false);
       setErrorMsg(errMessage);
@@ -324,6 +398,8 @@ export default function ToolSection({ toolRef }) {
 
   // ─── Reset ────────────────────────────────────────────────────────
   const resetAll = () => {
+    stopStatusPoller();
+    completionHandledRef.current = false;
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
