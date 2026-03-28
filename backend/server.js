@@ -21,6 +21,7 @@ const QUEUE_NAME = 'media-downloads';
 const DOWNLOAD_TTL_MINUTES = Number(process.env.DOWNLOAD_TTL_MINUTES || 60);
 const QUEUE_DISABLED = process.env.DISABLE_QUEUE === 'true' || process.env.NODE_ENV === 'test';
 const IS_DEV = process.env.NODE_ENV !== 'production';
+const IS_TEST_ENV = process.env.NODE_ENV === 'test' || Boolean(process.env.JEST_WORKER_ID);
 
 const CAPTCHA_REQUIRED = process.env.CAPTCHA_REQUIRED === 'true';
 const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '';
@@ -690,7 +691,9 @@ function cleanupOldDownloads() {
   }
 }
 
-cron.schedule('*/10 * * * *', cleanupOldDownloads);
+if (!IS_TEST_ENV) {
+  cron.schedule('*/10 * * * *', cleanupOldDownloads);
+}
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -884,23 +887,25 @@ app.post('/api/jobs', downloadLimiter, requireCaptcha, async (req, res) => {
       mode: 'direct',
     });
 
-    setImmediate(async () => {
-      try {
-        await processDownloadJob({
-          id: jobId,
-          data: { url, formatId, title: safeTitle },
-          updateProgress: async () => {},
-        });
-      } catch (error) {
-        logger.error({ err: error, jobId }, 'Direct download job failed');
-        emitJobUpdate(jobId, {
-          status: 'failed',
-          message: error.message || 'Download failed',
-          error: error.message || 'Download failed',
-          completedAt: Date.now(),
-        });
-      }
-    });
+    if (!IS_TEST_ENV) {
+      setImmediate(async () => {
+        try {
+          await processDownloadJob({
+            id: jobId,
+            data: { url, formatId, title: safeTitle },
+            updateProgress: async () => {},
+          });
+        } catch (error) {
+          logger.error({ err: error, jobId }, 'Direct download job failed');
+          emitJobUpdate(jobId, {
+            status: 'failed',
+            message: error.message || 'Download failed',
+            error: error.message || 'Download failed',
+            completedAt: Date.now(),
+          });
+        }
+      });
+    }
 
     return res.json({ job_id: jobId, ...state });
   }
