@@ -154,7 +154,20 @@ function materializeCookieStringToFile(cookieText, label) {
 
 function buildCookiePool() {
   const pool = [];
+  const configuredCookiePath = process.env.YOUTUBE_COOKIES_PATH
+    ? path.resolve(process.cwd(), process.env.YOUTUBE_COOKIES_PATH)
+    : null;
+  const repoCookiePath = path.join(__dirname, 'cookies.txt');
   const downloadsPath = path.join(os.homedir(), 'Downloads', 'cookies.txt');
+
+  if (configuredCookiePath && fs.existsSync(configuredCookiePath)) {
+    pool.push(configuredCookiePath);
+  }
+
+  if (fs.existsSync(repoCookiePath)) {
+    pool.push(repoCookiePath);
+  }
+
   if (fs.existsSync(downloadsPath)) {
     pool.push(downloadsPath);
   }
@@ -532,7 +545,7 @@ function emitJobUpdate(jobId, patch) {
 
 function getAttemptConfigs() {
   const attempts = [];
-  const clients = ['web', 'mweb', 'android', 'ios'];
+  const clients = ['android', 'ios', 'mweb', 'web', 'tv'];
   for (let i = 0; i < clients.length; i += 1) {
     attempts.push({
       playerClient: clients[i],
