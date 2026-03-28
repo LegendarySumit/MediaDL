@@ -332,6 +332,58 @@ function getMimeType(ext) {
   return map[ext] || 'application/octet-stream';
 }
 
+function buildPresetFormats(ffmpeg) {
+  const presets = [];
+
+  presets.push({
+    format_id: ffmpeg ? 'bestvideo+bestaudio/best' : 'best',
+    ext: 'mp4',
+    label: ffmpeg ? 'Best Quality (Auto-Merged MP4)' : 'Best Quality (MP4)',
+    note: 'Recommended',
+  });
+
+  if (ffmpeg) {
+    presets.push({
+      format_id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+      ext: 'mp4',
+      label: '1080p HD (Merged MP4)',
+      note: '',
+    });
+    presets.push({
+      format_id: 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+      ext: 'mp4',
+      label: '720p (Merged MP4)',
+      note: '',
+    });
+    presets.push({
+      format_id: 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+      ext: 'mp4',
+      label: '480p (Merged MP4)',
+      note: '',
+    });
+  }
+
+  presets.push({
+    format_id: 'bestaudio/best',
+    ext: 'mp3',
+    label: 'Audio Only (Best Quality)',
+    note: 'Audio only',
+  });
+
+  return presets;
+}
+
+function inferTitleFromUrl(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    const slug = parsed.pathname.split('/').filter(Boolean).pop();
+    if (slug) return `Media from ${slug}`;
+    return `Media from ${parsed.hostname}`;
+  } catch {
+    return 'Media Download';
+  }
+}
+
 async function verifyCaptchaToken(token, remoteIp) {
   if (!CAPTCHA_ENFORCED) {
     return { ok: true, bypassed: true };
@@ -987,41 +1039,7 @@ app.get('/api/info', async (req, res) => {
       }
     }
 
-    const presets = [];
-    presets.push({
-      format_id: ffmpeg ? 'bestvideo+bestaudio/best' : 'best',
-      ext: 'mp4',
-      label: ffmpeg ? 'Best Quality (Auto-Merged MP4)' : 'Best Quality (MP4)',
-      note: 'Recommended',
-    });
-
-    if (ffmpeg) {
-      presets.push({
-        format_id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-        ext: 'mp4',
-        label: '1080p HD (Merged MP4)',
-        note: '',
-      });
-      presets.push({
-        format_id: 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-        ext: 'mp4',
-        label: '720p (Merged MP4)',
-        note: '',
-      });
-      presets.push({
-        format_id: 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-        ext: 'mp4',
-        label: '480p (Merged MP4)',
-        note: '',
-      });
-    }
-
-    presets.push({
-      format_id: 'bestaudio/best',
-      ext: 'mp3',
-      label: 'Audio Only (Best Quality)',
-      note: 'Audio only',
-    });
+    const presets = buildPresetFormats(ffmpeg);
 
     res.json({
       title: info.title,
@@ -1041,6 +1059,32 @@ app.get('/api/info', async (req, res) => {
   } catch (error) {
     logger.error({ err: error, platform }, 'Failed to fetch media info');
     const classified = classifyYtDlpError(error.message || '');
+
+    const allowDegradedInfo = ['auth_required', 'upstream_fetch_failed', 'proxy_failure', 'proxy_account_inactive']
+      .includes(classified.code);
+
+    if (allowDegradedInfo) {
+      const presets = buildPresetFormats(ffmpeg);
+      return res.json({
+        title: inferTitleFromUrl(url),
+        thumbnail: '',
+        thumbnail_original: '',
+        duration: null,
+        duration_string: '',
+        uploader: 'Unknown',
+        view_count: null,
+        like_count: null,
+        description: '',
+        webpage_url: url,
+        extractor: platform,
+        ffmpeg,
+        formats: presets,
+        degraded: true,
+        warning: classified.userMessage,
+        code: classified.code,
+      });
+    }
+
     res.status(classified.httpStatus).json({
       error: classified.userMessage,
       platform,

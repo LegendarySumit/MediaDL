@@ -49,7 +49,7 @@ test('user can fetch info and trigger async download flow', async ({ page }) => 
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
       },
-      body: 'data: {"jobId":"job-123","status":"completed","progress":100,"message":"Download ready","fileName":"sample.mp4","fallbackUrl":"/downloads/sample.mp4"}\n\n'
+      body: 'data: {"jobId":"job-123","status":"processing","progress":42,"message":"Downloading 42%"}\n\n'
     });
   });
 
@@ -72,7 +72,9 @@ test('user can fetch info and trigger async download flow', async ({ page }) => 
   await expect(page.getByText('Sample Video')).toBeVisible();
 
   await page.getByRole('button', { name: 'Download Now' }).click();
-  
-  // Wait for either success or the tracking error to know what happened
-  await expect(page.getByText('completed')).toBeVisible({ timeout: 15000 });
+
+  // Active-only UI should show the current job state instead of completed history.
+  await expect(page.getByText('Current Download')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('processing')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('42%', { exact: true })).toBeVisible({ timeout: 15000 });
 });
