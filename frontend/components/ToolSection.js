@@ -440,8 +440,8 @@ export default function ToolSection({ toolRef }) {
       id="tool-section"
       ref={toolRef}
       className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${isDark
-          ? "bg-gradient-to-b from-slate-950 to-slate-900"
-          : "bg-gradient-to-b from-slate-50 to-white"
+          ? "bg-linear-to-b from-slate-950 to-slate-900"
+          : "bg-linear-to-b from-slate-50 to-white"
         }`}
     >
       <div className="max-w-3xl mx-auto">
@@ -459,8 +459,8 @@ export default function ToolSection({ toolRef }) {
           </div>
           <h2
             className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${isDark
-                ? "bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
-                : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
+                ? "bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
+                : "bg-linear-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
               }`}
           >
             Download Any Video
@@ -476,7 +476,7 @@ export default function ToolSection({ toolRef }) {
         {/* Downloader Card */}
         <div
           className={`rounded-xl xs:rounded-2xl p-4 xs:p-6 sm:p-8 shadow-2xl border transition-colors duration-300 ${isDark
-              ? "bg-gradient-to-br from-slate-900/80 via-slate-800/40 to-slate-900/80 text-white border-slate-700/50 backdrop-blur-sm"
+              ? "bg-linear-to-br from-slate-900/80 via-slate-800/40 to-slate-900/80 text-white border-slate-700/50 backdrop-blur-sm"
               : "bg-white/70 text-slate-900 border-slate-200 shadow-xl backdrop-blur-sm"
             }`}
         >
@@ -528,8 +528,8 @@ export default function ToolSection({ toolRef }) {
               </label>
               {detectedPlatform && (
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] xs:text-xs font-semibold whitespace-nowrap ${isDark
-                    ? "bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/40 text-blue-300"
-                    : "bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-300/60 text-blue-700"
+                    ? "bg-linear-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/40 text-blue-300"
+                    : "bg-linear-to-r from-blue-50 to-purple-50 border border-blue-300/60 text-blue-700"
                   }`}
                 >
                   {detectedPlatform.emoji} {detectedPlatform.name}
@@ -578,7 +578,7 @@ export default function ToolSection({ toolRef }) {
                     ? isDark
                       ? "bg-slate-700/30 cursor-not-allowed text-slate-500"
                       : "bg-slate-200/50 cursor-not-allowed text-slate-400"
-                    : "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:opacity-90 active:scale-95"
+                    : "bg-linear-to-r from-blue-600 to-purple-600 text-white hover:opacity-90 active:scale-95"
                   }`}
               >
                 {loading ? (
@@ -617,13 +617,13 @@ export default function ToolSection({ toolRef }) {
               <div
                 className={`rounded-xl overflow-hidden border-2 mb-6 backdrop-blur-sm transition-all hover:shadow-lg ${
                   isDark
-                    ? "bg-gradient-to-br from-slate-800/60 to-slate-900/60 border-slate-700/40 hover:border-purple-500/40"
-                    : "bg-gradient-to-br from-slate-50/80 to-white/80 border-slate-200 hover:border-slate-300"
+                    ? "bg-linear-to-br from-slate-800/60 to-slate-900/60 border-slate-700/40 hover:border-purple-500/40"
+                    : "bg-linear-to-br from-slate-50/80 to-white/80 border-slate-200 hover:border-slate-300"
                   }`}
               >
                 <div className="flex flex-col sm:flex-row gap-4 sm:gap-0">
                   {/* Thumbnail Container */}
-                  <div className="relative sm:w-64 sm:shrink-0 flex-shrink-0 h-44 sm:h-auto">
+                  <div className="relative sm:w-64 sm:shrink-0 shrink-0 h-44 sm:h-auto">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={videoInfo.thumbnail}
@@ -765,12 +765,12 @@ export default function ToolSection({ toolRef }) {
                   onClick={startDownload}
                   className={`w-full py-4 xs:py-5 rounded-xl font-bold transition-all flex items-center justify-center gap-2.5 text-base xs:text-lg uppercase tracking-wide ${
                     downloading
-                      ? "bg-gradient-to-r from-green-600 to-emerald-600 text-white"
+                      ? "bg-linear-to-r from-green-600 to-emerald-600 text-white"
                       : !selectedFormat
                         ? isDark
                           ? "bg-slate-700/40 cursor-not-allowed text-slate-500"
                           : "bg-slate-200/60 cursor-not-allowed text-slate-400"
-                        : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:opacity-90 active:scale-95"
+                        : "bg-linear-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:opacity-90 active:scale-95"
                     }`}
                 >
                   {downloading ? (
