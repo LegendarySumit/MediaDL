@@ -214,10 +214,60 @@ function registerExtractionFailure(message) {
     lowered.includes('429') ||
     lowered.includes('too many requests') ||
     lowered.includes('forbidden') ||
-    lowered.includes('cookies are no longer')
+    lowered.includes('cookies are no longer') ||
+    lowered.includes('tunnel connection failed') ||
+    lowered.includes('proxyerror')
   ) {
     alertPoolIssue('yt-dlp', message);
   }
+}
+
+function classifyYtDlpError(message) {
+  const raw = String(message || '');
+  const lowered = raw.toLowerCase();
+
+  if (lowered.includes('tunnel connection failed: 402 account is inactive')) {
+    return {
+      code: 'proxy_account_inactive',
+      httpStatus: 503,
+      userMessage: 'Proxy provider account is inactive. Please reactivate or remove proxy configuration.',
+      retryable: false,
+    };
+  }
+
+  if (lowered.includes('proxyerror') || lowered.includes('tunnel connection failed')) {
+    return {
+      code: 'proxy_failure',
+      httpStatus: 502,
+      userMessage: 'Upstream proxy connection failed while fetching media info.',
+      retryable: true,
+    };
+  }
+
+  if (lowered.includes('unable to download webpage')) {
+    return {
+      code: 'upstream_fetch_failed',
+      httpStatus: 502,
+      userMessage: 'Unable to fetch media webpage from upstream provider.',
+      retryable: true,
+    };
+  }
+
+  if (lowered.includes('sign in') || lowered.includes('cookies')) {
+    return {
+      code: 'auth_required',
+      httpStatus: 403,
+      userMessage: 'Media source requires valid authenticated cookies.',
+      retryable: false,
+    };
+  }
+
+  return {
+    code: 'yt_dlp_failed',
+    httpStatus: 500,
+    userMessage: raw || 'yt-dlp extraction failed',
+    retryable: true,
+  };
 }
 
 function detectPlatform(url) {
@@ -410,6 +460,14 @@ function getAttemptConfigs() {
       cookieFile: getNextCookieFile(),
     });
   }
+
+  // Final fallback avoids proxy-only failure modes (e.g. inactive proxy account).
+  attempts.push({
+    playerClient: 'web',
+    proxy: null,
+    cookieFile: getNextCookieFile(),
+  });
+
   return attempts;
 }
 
@@ -883,9 +941,13 @@ app.get('/api/info', async (req, res) => {
     });
   } catch (error) {
     logger.error({ err: error, platform }, 'Failed to fetch media info');
-    res.status(500).json({
-      error: error.message || `Failed to fetch ${platform} info`,
+    const classified = classifyYtDlpError(error.message || '');
+    res.status(classified.httpStatus).json({
+      error: classified.userMessage,
       platform,
+      code: classified.code,
+      retryable: classified.retryable,
+      raw_error: error.message || `Failed to fetch ${platform} info`,
       diagnostics: {
         cookies_pool_size: cookiePool.length,
         proxy_pool_size: proxyPool.length,
