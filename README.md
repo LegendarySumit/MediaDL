@@ -1,402 +1,257 @@
-# 🎬 Media Downloader - Production Ready
+<div align="center">
 
-**Professional-grade video and audio downloader with modern UI, real-time progress, and enterprise architecture.**
+# 🎬 MediaDL
 
----
+**Production-ready media downloader with async jobs, real-time progress, and hardened extraction fallbacks.**
 
-## ⚡ Quick Start
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-BullMQ-DC382D?logo=redis&logoColor=white)
+![yt--dlp](https://img.shields.io/badge/yt--dlp-enabled-FF0000)
+![License](https://img.shields.io/badge/License-ISC-blue)
 
-### Development (Local)
-```bash
-# Prerequisites: Redis, Node.js 20+, yt-dlp installed
+*YouTube • Instagram • TikTok • Job Queue • SSE Progress • Captcha-ready*
 
-# Terminal 1 - Backend
-cd backend
-npm install
-npm run dev                 # Runs on http://localhost:3001
+[Live Demo](https://media-dl.vercel.app) • [Features](#-features) • [Quick Start](#-quick-start) • [Tech Stack](#-tech-stack)
 
-# Terminal 2 - Frontend  
-cd frontend
-npm install
-npm run dev                 # Runs on http://localhost:3000
-```
-Access frontend: http://localhost:3000  
-Backend API: http://localhost:3001
-
-### Production - Render + Vercel Deployment
-```bash
-# 1. Fork repository on GitHub
-# 2. Deploy backend to Render (see DEPLOYMENT.md)
-# 3. Deploy frontend to Vercel (see DEPLOYMENT.md)
-# 4. Configure environment variables in each platform
-# 5. Test: https://media-dl.vercel.app
-```
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete step-by-step guide.
+</div>
 
 ---
 
-## 🎯 Features
+## 📖 About
 
-✅ **Video Downloads** - YouTube, Instagram, TikTok (144p-1080p)  
-✅ **Audio Extraction** - Fast audio-only downloads  
-✅ **Real-time Progress** - Live streaming updates with ETA  
-✅ **Download History** - Track all downloads with filtering  
-✅ **Light/Dark Mode** - Beautiful theme toggle with smooth animations  
-✅ **HTTPS/SSL** - Let's Encrypt integration with auto-renewal  
-✅ **Rate Limiting** - Nginx + Backend multi-layer protection  
-✅ **reCAPTCHA** - Optional spam protection (v3)  
-✅ **Production Ready** - Secure, scalable, battle-tested  
-✅ **Clean Architecture** - Refactored codebase, zero technical debt  
+MediaDL is a full-stack downloader application built for real-world deployment across a split frontend/backend architecture. The frontend is powered by Next.js and talks to a dedicated Express backend that orchestrates `yt-dlp`, `ffmpeg`, proxy/cookie rotation, and async download jobs.
+
+The platform supports resilient extraction for platforms like YouTube and Instagram with multiple fallbacks: rotating player clients, rotating cookies/proxies, SSE progress updates, polling fallback, and degraded metadata mode when upstream providers rate-limit or challenge requests.
+
+This repository includes production hardening features such as Helmet, rate limiting, captcha verification hooks, structured logging, queue workers (BullMQ + Redis), and automated cleanup for expired downloads.
 
 ---
 
-## 📊 Technology Stack
+## ✨ Features
+
+- ✅ Async download jobs with queue support (BullMQ)
+- ✅ Real-time progress via Server-Sent Events (`/api/progress`)
+- ✅ Polling fallback when SSE is interrupted
+- ✅ YouTube extraction fallbacks with multi-client retries
+- ✅ Cookie/proxy pool rotation across retry attempts
+- ✅ Degraded `/api/info` response fallback when metadata is blocked
+- ✅ Instagram thumbnail proxy endpoint with cross-origin-safe headers
+- ✅ Captcha integration support (Turnstile / reCAPTCHA)
+- ✅ Download history persistence in frontend local storage
+- ✅ Rate limiting + Helmet + CORS hardening
+
+---
+
+## 🛠️ Tech Stack
 
 ### Frontend
-- **Framework:** Next.js 15.1 + React 19.0
-- **Styling:** Tailwind CSS 4.1
-- **Animations:** Framer Motion 12.34
-- **Theme:** Light/Dark mode with localStorage persistence
-- **Real-time:** EventSource for progress streaming
-- **E2E Tests:** Playwright
 
-### Backend (Node.js/Express)
-- **Framework:** Express 4.21 (Node.js 20+)
-- **Download Engine:** yt-dlp + FFmpeg
-- **Job Queue:** BullMQ + Redis
-- **Rate Limiting:** express-rate-limit + Helmet
-- **Logging:** Pino (structured JSON logs)
-- **Async Jobs:** Worker-based queue processing
-- **Testing:** Jest + Supertest
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Framer Motion](https://img.shields.io/badge/Framer_Motion-12-0055FF)
+![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 
-### Infrastructure
-- **Frontend Hosting:** Vercel (serverless)
-- **Backend Hosting:** Render (web service)
-- **Database:** Redis (job queue, caching)
-- **CI/CD:** GitHub Actions
-- **Security:** Helmet, CORS, rate limiting, captcha verification (Turnstile/reCAPTCHA)
+### Backend
+
+![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
+![BullMQ](https://img.shields.io/badge/BullMQ-Queue-DC382D)
+![Redis](https://img.shields.io/badge/Redis-Optional_Local-F05032?logo=redis&logoColor=white)
+![yt--dlp](https://img.shields.io/badge/yt--dlp-Extractor-FF0000)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-Merge%2FAudio-007808)
+
+### Platform & Ops
+
+![Render](https://img.shields.io/badge/Backend-Render-46E3B7)
+![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000?logo=vercel&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?logo=github-actions&logoColor=white)
 
 ---
 
-## 🏗️ Architecture
+## 📁 Project Structure
 
-```
-┌──────────────────────────────────────────────┐
-│          Browser (User Interface)            │
-│   Light/Dark Theme · Progress Tracking       │
-└────────────────┬─────────────────────────────┘
-                 │ HTTP/EventSource
-┌────────────────▼─────────────────────────────┐
-│           Frontend (Next.js)                  │
-│  · Server Components                          │
-│  · Client-side state management               │
-│  · Real-time progress streaming               │
-└────────────────┬─────────────────────────────┘
-                 │ REST API + SSE
-┌────────────────▼─────────────────────────────┐
-│           Backend (FastAPI)                   │
-│  · Download orchestration                     │
-│  · Progress callbacks                         │
-│  · Job management                             │
-│  · Security validation                        │
-└────┬───────────────────────────────┬──────────┘
-     │                               │
-┌────▼──────┐              ┌─────────▼──────────┐
-│   Redis   │              │  yt-dlp + FFmpeg   │
-│  (Jobs)   │              │  (Downloads)       │
-└───────────┘              └────────────────────┘
+```text
+MediaDL/
+├─ backend/
+│  ├─ server.js              # Express API + queue worker + yt-dlp orchestration
+│  ├─ tests/                 # Jest + Supertest backend tests
+│  ├─ package.json
+│  └─ cookies.txt            # Optional local cookie file (not committed)
+├─ frontend/
+│  ├─ app/                   # Next.js app router pages
+│  ├─ components/            # UI components (ToolSection, etc.)
+│  ├─ lib/api.js             # API client + URL normalization
+│  ├─ e2e/                   # Playwright tests
+│  └─ package.json
+├─ docker-compose.yml
+├─ Dockerfile
+└─ README.md
 ```
 
-**Key Design Patterns:**
-- **Orchestrator Pattern:** Unified download logic for video/audio
-- **Single Source of Truth:** Consolidated job management
-- **Event Streaming:** Server-Sent Events for real-time updates
-- **Background Tasks:** FastAPI BackgroundTasks for async downloads
-- **Repository Pattern:** Clean separation between services and storage
-
 ---
 
-## 📋 Requirements
+## 🚀 Quick Start
 
-### For Docker Deployment
-- Docker & docker-compose
-- 2GB+ disk space
-- Port 80 available (or configure custom port)
-
-### For Local Development
-- Python 3.11+
-- Node.js 18+
-- FFmpeg installed and in PATH
-- yt-dlp: `pip install yt-dlp`
-
----
-
-## 🚀 Detailed Setup
-
-### Docker Production Deployment
+### 1. Clone
 
 ```bash
-# 1. Clone/navigate to project
-cd media-downloader
-
-# 2. Build and start all services
-docker-compose up --build
-
-# 3. Access application
-open http://localhost
-
-# Services running:
-# - Nginx (Port 80) → Reverse proxy
-# - Frontend (Port 3000) → Next.js UI
-# - Backend (Port 8000) → FastAPI + yt-dlp
-# - Redis (Port 6379) → Job storage
+git clone https://github.com/LegendarySumit/MediaDL.git
+cd MediaDL
 ```
 
-### Local Development Setup
+### 2. Start Backend
 
 ```bash
-# Backend Setup
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env: USE_FAKEREDIS=true for development
-
-# Start backend
-python -m uvicorn main:app --reload --port 8001
-
-# Frontend Setup (new terminal)
-cd frontend
 npm install
 
-# Start frontend
+# Optional local mode without Redis
+$env:DISABLE_QUEUE="true"   # PowerShell
+# export DISABLE_QUEUE=true   # bash
+
+node server.js
+```
+
+Backend runs at `http://localhost:3001`.
+
+### 3. Start Frontend
+
+```bash
+cd ../frontend
+npm install
 npm run dev
-# Access: http://localhost:3002 (auto-increments if port busy)
 ```
+
+Frontend runs at `http://localhost:3000`.
 
 ---
 
-## 🎨 User Interface
+## ⚙️ Configuration
 
-### Main Download Interface
-- **URL Input:** Paste any supported video URL
-- **Mode Toggle:** Switch between Video and Audio download
-- **Quality Selection:** 
-  - Video: 144p, 360p, 720p (recommended), 1080p
-  - Audio: 192kbps, 256kbps, 320kbps (recommended)
-- **Progress Display:** Real-time circular spinner → progress bar with percentage
-- **Download Button:** Auto-triggers when complete
+Set values in your deployment environment (Render/Vercel) or local shell.
 
-### Theme System
-- **Toggle:** Animated slider in navbar (sun/moon icons with rotation)
-- **Persistence:** Saved to localStorage
-- **Colors:** 
-  - Dark: Slate grays with blue/purple accents
-  - Light: White/slate with vibrant blue/sky accents
-- **Sections:** Each section has distinctive color palette (cyan, indigo, pink, blue)
+| Variable | Scope | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE` | Frontend | Absolute backend URL in production |
+| `FRONTEND_ORIGIN` | Backend | Allowed production frontend origin |
+| `REDIS_URL` | Backend | Queue storage (optional in local direct mode) |
+| `DISABLE_QUEUE` | Backend | `true` to bypass Redis queue locally |
+| `YOUTUBE_COOKIES` | Backend | Cookie content for extraction |
+| `YOUTUBE_COOKIES_PATH` | Backend | Cookie file path (example: `./backend/cookies.txt`) |
+| `YOUTUBE_COOKIES_POOL` | Backend | Rotating cookie pool |
+| `YOUTUBE_PROXY` / `YOUTUBE_PROXY_POOL` | Backend | Optional proxy routing |
+| `CAPTCHA_REQUIRED` | Backend | Enable captcha verification on protected endpoints |
+| `TURNSTILE_SECRET_KEY` / `RECAPTCHA_SECRET_KEY` | Backend | Captcha provider secrets |
 
-### Download History Page
-- **Route:** `/history`
-- **Features:** Job listing, status filtering, retry failed jobs
-- **Data:** Platform, type, quality, timestamp, file name
+Reference template: `.env.example`
 
 ---
 
-## 🔧 API Endpoints
+## 📚 Usage
 
-### Download Management
+1. Paste a supported URL in the input field.
+2. Click **Fetch** to retrieve metadata and available formats.
+3. Select quality/format.
+4. Click **Download Now** to create a job.
+5. Track progress in the active download card.
+6. File is served when job reaches completed state.
 
-**Start Video Download**
-```http
-POST /start/video
-Content-Type: application/x-www-form-urlencoded
-
-url=https://youtube.com/watch?v=...&quality=720&cookies=
-```
-
-**Start Audio Download**
-```http
-POST /start/audio
-Content-Type: application/x-www-form-urlencoded
-
-url=https://youtube.com/watch?v=...&quality=192&cookies=
-```
-
-Response:
-```json
-{
-  "job_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-**Stream Progress**
-```http
-GET /progress/{job_id}
-Accept: text/event-stream
-```
-
-Server-Sent Events:
-```
-data:0.0
-data:25.5
-data:50.0
-data:75.2
-data:100.0|video_abc123.mp4
-```
-
-**Download File**
-```http
-GET /download/{job_id}
-```
-
-Returns file as attachment with proper headers.
-
-### History & Management
-
-**Get Download History**
-```http
-GET /api/history?limit=50
-```
-
-**Get Job Details**
-```http
-GET /api/history/{job_id}
-```
-
-**Filter by Status**
-```http
-GET /api/history/status/{status}  # queued, running, done, error
-```
-
-**Filter by Platform**
-```http
-GET /api/history/platform/{platform}  # youtube, instagram, tiktok
-```
-
-**Delete Job**
-```http
-DELETE /api/job/{job_id}
-```
-
-**Health Check**
-```http
-GET /health
-```
+Notes:
+- If metadata fetch is challenged by upstream providers, the app may return a degraded info response with preset formats so downloads can still proceed.
+- Thumbnail rendering is proxied through backend for cross-origin safety.
 
 ---
 
-## 🔒 Security Features
+## 🔌 API Endpoints
 
-### Implemented Protections
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Service status and queue/captcha diagnostics |
+| `GET` | `/api/check-ytdlp` | yt-dlp and ffmpeg availability |
+| `GET` | `/api/cookie-status` | Cookie pool status |
+| `GET` | `/api/proxy-status` | Proxy pool status |
+| `GET` | `/api/image-proxy?url=...` | Proxies external image/thumbnail |
+| `GET` | `/api/info?url=...` | Metadata + formats for URL |
+| `POST` | `/api/jobs` | Create download job |
+| `GET` | `/api/jobs/:id` | Job state |
+| `GET` | `/api/progress?id=:id` | SSE progress stream |
+| `GET` | `/api/jobs/:id/file` | Download completed file |
 
-✅ **Path Traversal Prevention**
-- All file paths validated against download directory
-- Prevents `../../etc/passwd` style attacks
-- Blocked at both download endpoint and file deletion
+### Create Job Example
 
-✅ **Input Validation**
-- URL format and platform validation
-- Quality parameter whitelist
-- Cookie size limits (100KB max)
-- SQL injection N/A (no SQL database)
-
-✅ **Resource Protection**
-- Rate limiting: 5 video/min, 10 audio/min per IP
-- Maximum download size configurable
-- Automatic file cleanup after 7 days
-- Memory leak prevention in rate limiter
-
-✅ **Secure Defaults**
-- CORS configured for same-origin
-- Environment variables for sensitive config
-- Temporary cookie files cleaned in `finally` blocks
-- Job expiration (24 hours in Redis)
-
-✅ **Error Handling**
-- No stack traces exposed to users
-- Proper HTTP status codes
-- Sanitized error messages
-- Comprehensive logging for debugging
-
-### Recent Security Fixes (February 2026 Refactoring)
-
-1. **Critical:** Fixed path traversal in download endpoint
-2. **Critical:** Added path validation to file deletion
-3. **High:** Fixed memory leak in rate limiter
-4. **High:** Guaranteed temp cookie file cleanup
-5. **High:** Fixed race condition in file discovery
-
----
-
-## 📈 Performance
-
-| Operation | Speed | Notes |
-|-----------|-------|-------|
-| Video (3min @ 720p) | 15-20s | YouTube, depends on connection |
-| Audio extraction | 5-10s | No re-encoding, native format |
-| Progress updates | 300ms | Configurable poll interval |
-| Job creation | <10ms | Redis write + job ID generation |
-| File download | Instant | Direct file streaming |
-| Container startup | 5-10s | All services + health checks |
-
-### Optimization Features
-- **No transcoding:** Downloads in native format
-- **Streaming progress:** SSE instead of polling
-- **Connection pooling:** Redis client reuse
-- **Concurrent downloads:** Multiple jobs in background
-- **File caching:** yt-dlp internal caching
-
----
-
-## 🛠️ Configuration
-
-### Environment Variables
-
-**Backend** (`.env` or docker-compose)
 ```bash
-# API Settings
-API_PORT=8001
-API_HOST=0.0.0.0
-
-# Download Settings  
-DOWNLOAD_DIR=./downloads
-MAX_DOWNLOAD_SIZE_GB=50
-VIDEO_QUALITY=720
-AUDIO_QUALITY=192
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-USE_FAKEREDIS=true  # Development only
-
-# Cleanup
-CLEANUP_DAYS=7
-CLEANUP_MIN_DISK_SPACE_GB=5
-
-# Rate Limiting
-VIDEO_REQUESTS_PER_MINUTE=5
-AUDIO_REQUESTS_PER_MINUTE=10
-
-# Logging
-LOG_LEVEL=INFO
-LOG_DIR=./logs
-LOG_MAX_SIZE_MB=10
-```
-
-**Frontend**
-```bash
-# API endpoint (automatic in Docker)
-NEXT_PUBLIC_API_URL=/api  # Production with Nginx
-NEXT_PUBLIC_API_URL=http://localhost:8001  # Development
+curl -X POST https://mediadl.onrender.com/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://youtu.be/fbCtipc2mZs","format":"bestvideo+bestaudio/best","title":"Sample"}'
 ```
 
 ---
 
-## 🧪 Testing
+## 📊 Project Statistics
+
+| Metric | Value |
+|---|---|
+| Frontend Framework | Next.js 15 |
+| Backend Framework | Express 4 |
+| API Endpoints | 10 |
+| Test Types | Jest + Supertest + Playwright |
+| Queue Mode | BullMQ + Redis (with direct fallback) |
+
+---
+
+## 🐛 Troubleshooting
+
+| Issue | Cause | Fix |
+|---|---|---|
+| `403 Sign in to confirm you're not a bot` (YouTube) | Missing/invalid cookies or aggressive provider checks | Set `YOUTUBE_COOKIES` or `YOUTUBE_COOKIES_PATH`, refresh cookies periodically |
+| Thumbnail blocked / not rendering | Cross-origin image policy or wrong host routing | Ensure frontend uses `NEXT_PUBLIC_API_BASE` and backend has image proxy route |
+| Jobs stuck in `Starting...` | SSE interruption or no worker progress signal | Keep poll fallback enabled; verify `/api/jobs/:id` updates |
+| Redis connection refused locally | No local Redis running | Set `DISABLE_QUEUE=true` for local direct mode |
+
+---
+
+## 🔮 Future Enhancements
+
+- [ ] Multi-language UI support
+- [ ] User accounts and saved preferences
+- [ ] Webhook callbacks for completed jobs
+- [ ] Optional object storage (S3/R2) for files
+- [ ] Download analytics dashboard
+
+---
+
+## 📄 License
+
+This project is licensed under the **ISC License**.
+
+---
+
+## 👨‍💻 Author
+
+**LegendarySumit**
+
+- GitHub: [@LegendarySumit](https://github.com/LegendarySumit)
+- Project: [MediaDL](https://github.com/LegendarySumit/MediaDL)
+- Live Demo: [media-dl.vercel.app](https://media-dl.vercel.app)
+
+---
+
+<div align="center">
+
+**⚡ Download Smarter. Ship Faster.**
+
+*MediaDL v1 - resilient extraction + production-ready UX*
+
+---
+
+**⭐ Star this repo if you find it helpful!**
+
+</div>
 
 ### Manual Testing Checklist
 
