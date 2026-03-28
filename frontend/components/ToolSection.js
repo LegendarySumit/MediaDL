@@ -222,14 +222,19 @@ export default function ToolSection({ toolRef }) {
 
             const primaryUrl = api.getJobFileUrl(jobId);
             const fallbackUrl = api.toAbsoluteUrl(payload.fallbackUrl || "");
-            api.downloadWithFallback([primaryUrl, fallbackUrl], payload.fileName || videoInfo.title || "download")
-              .catch((downloadError) => {
-                setErrorMsg(downloadError.message || "Download file is unavailable.");
-              });
-
-            setDownloading(false);
-            setDownloadStatus("Download Started!");
+            setDownloadStatus("Finalizing file...");
             setDownloadProgress(100);
+
+            (async () => {
+              try {
+                await api.downloadWithFallback([primaryUrl, fallbackUrl], payload.fileName || videoInfo.title || "download");
+                setDownloadStatus("Download Started!");
+              } catch (downloadError) {
+                setErrorMsg(downloadError.message || "Download file is unavailable.");
+              } finally {
+                setDownloading(false);
+              }
+            })();
           }
 
           if (status === "failed") {
@@ -252,11 +257,12 @@ export default function ToolSection({ toolRef }) {
           if (latest.status === "completed") {
             const primaryUrl = api.getJobFileUrl(jobId);
             const fallbackUrl = api.toAbsoluteUrl(latest.fallbackUrl || "");
+            setDownloadStatus("Finalizing file...");
+            setDownloadProgress(100);
             await api.downloadWithFallback([primaryUrl, fallbackUrl], latest.fileName || videoInfo.title || "download");
 
             setDownloading(false);
             setDownloadStatus("Download Started!");
-            setDownloadProgress(100);
           } else if (latest.status === "failed") {
             setDownloading(false);
             setErrorMsg(latest.error || latest.message || "Download failed. Please try again.");

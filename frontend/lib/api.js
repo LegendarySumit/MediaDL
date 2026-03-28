@@ -27,6 +27,12 @@ function getApiBase() {
 
 const API_BASE = getApiBase();
 
+const RETRYABLE_DOWNLOAD_STATUS = new Set([404, 409, 425, 429, 500, 502, 503, 504]);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function apiFetch(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   try {
@@ -97,22 +103,31 @@ const api = {
     for (const candidate of urls) {
       if (!candidate) continue;
       tried.push(candidate);
-      try {
-        const response = await fetch(candidate);
-        if (!response.ok) continue;
+      for (let attempt = 1; attempt <= 6; attempt += 1) {
+        try {
+          const response = await fetch(candidate, { cache: 'no-store' });
+          if (response.ok) {
+            const blob = await response.blob();
+            const objectUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objectUrl;
+            a.download = fileName || 'download';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(objectUrl);
+            return true;
+          }
 
-        const blob = await response.blob();
-        const objectUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objectUrl;
-        a.download = fileName || 'download';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(objectUrl);
-        return true;
-      } catch {
+          if (!RETRYABLE_DOWNLOAD_STATUS.has(response.status) || attempt === 6) {
+            break;
+          }
+        } catch {
+          if (attempt === 6) break;
+        }
+
+        await sleep(350 * attempt);
       }
     }
 
