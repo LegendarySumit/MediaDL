@@ -31,6 +31,8 @@ const IS_TEST_ENV = process.env.NODE_ENV === 'test' || Boolean(process.env.JEST_
 const CAPTCHA_REQUIRED = process.env.CAPTCHA_REQUIRED === 'true';
 const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '';
 const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '';
+const CAPTCHA_PROVIDER_CONFIGURED = Boolean(TURNSTILE_SECRET_KEY || RECAPTCHA_SECRET_KEY);
+const CAPTCHA_ENFORCED = CAPTCHA_REQUIRED && CAPTCHA_PROVIDER_CONFIGURED;
 
 fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 fs.mkdirSync(LOGS_DIR, { recursive: true });
@@ -331,7 +333,7 @@ function getMimeType(ext) {
 }
 
 async function verifyCaptchaToken(token, remoteIp) {
-  if (!CAPTCHA_REQUIRED) {
+  if (!CAPTCHA_ENFORCED) {
     return { ok: true, bypassed: true };
   }
 
@@ -389,11 +391,14 @@ async function verifyCaptchaToken(token, remoteIp) {
     return { ok: false, error: providerErrors.join(' | ') };
   }
 
-  return { ok: false, error: 'Captcha is required but server secret key is not configured' };
+  return { ok: false, error: 'Captcha verification failed' };
 }
 
 async function requireCaptcha(req, res, next) {
-  if (!CAPTCHA_REQUIRED) {
+  if (!CAPTCHA_ENFORCED) {
+    if (CAPTCHA_REQUIRED && !CAPTCHA_PROVIDER_CONFIGURED) {
+      logger.warn('CAPTCHA_REQUIRED=true but no provider secret configured; allowing request (fail-open)');
+    }
     return next();
   }
 
@@ -842,6 +847,8 @@ app.get('/api/health', (req, res) => {
     message: 'MediaDL Server is running',
     queueEnabled: !QUEUE_DISABLED,
     captchaRequired: CAPTCHA_REQUIRED,
+    captchaEnforced: CAPTCHA_ENFORCED,
+    captchaProviderConfigured: CAPTCHA_PROVIDER_CONFIGURED,
   });
 });
 
@@ -1222,6 +1229,8 @@ function startServer() {
       proxyPoolSize: proxyPool.length,
       queueEnabled: !QUEUE_DISABLED,
       captchaRequired: CAPTCHA_REQUIRED,
+      captchaEnforced: CAPTCHA_ENFORCED,
+      captchaProviderConfigured: CAPTCHA_PROVIDER_CONFIGURED,
     }, 'MediaDL server started');
   });
   return server;

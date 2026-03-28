@@ -11,9 +11,10 @@ function getApiBase() {
   const hostname = window.location.hostname;
   const isDev = process.env.NODE_ENV === 'development';
 
-  // Check for explicit API URL override
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  // Check for explicit API URL override (prefer documented var)
+  const explicitApiBase = process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL;
+  if (explicitApiBase) {
+    return explicitApiBase.replace(/\/$/, '');
   }
 
   // Development or local testing
