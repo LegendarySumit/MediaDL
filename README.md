@@ -227,7 +227,9 @@ curl -X POST https://mediadl.onrender.com/api/jobs \
 
 ## 📄 License
 
-This project is licensed under the **ISC License**.
+This project is licensed under a **Proprietary All Rights Reserved License**.
+
+See [LICENSE](LICENSE) for full terms.
 
 ---
 

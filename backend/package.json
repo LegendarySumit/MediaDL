@@ -10,8 +10,8 @@
     "test:watch": "jest --watch"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "LegendarySumit",
+  "license": "UNLICENSED",
   "type": "commonjs",
   "dependencies": {
     "bullmq": "^5.71.1",
