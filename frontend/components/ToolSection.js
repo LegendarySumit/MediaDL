@@ -28,6 +28,7 @@ export default function ToolSection({ toolRef }) {
     isEnabled: isCaptchaEnabled,
     isReady: isCaptchaReady,
     provider: captchaProvider,
+    lastErrorCode: captchaErrorCode,
     mountTurnstile,
     resetTurnstile,
   } = useReCaptcha();
@@ -138,7 +139,7 @@ export default function ToolSection({ toolRef }) {
     resetTurnstile();
 
     try {
-      const data = await api.getInfo(url);
+      const data = await api.getInfo(url, captchaToken);
       setVideoInfo(data);
       // Auto-select recommended format
       const recommended = data.formats?.find((f) => f.note === "Recommended");
@@ -273,6 +274,10 @@ export default function ToolSection({ toolRef }) {
 
     if (isCaptchaEnabled) {
       if (captchaProvider === "turnstile" && !token) {
+        if (captchaErrorCode) {
+          setErrorMsg(`Captcha failed to initialize (Turnstile ${captchaErrorCode}). Check NEXT_PUBLIC_TURNSTILE_SITE_KEY domain config, or set NEXT_PUBLIC_RECAPTCHA_SITE_KEY as fallback.`);
+          return;
+        }
         setErrorMsg("Complete captcha and the download will start automatically.");
         setPendingDownloadAfterCaptcha(true);
         return;

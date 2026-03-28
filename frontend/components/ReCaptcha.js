@@ -47,16 +47,25 @@ export default function ReCaptcha({ onVerify, siteKey }) {
 export function useReCaptcha() {
   const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-  
-  // Use "none" provider if testing in E2E since testing environments can't always solve real Turnstile/reCaptcha widget overlays
-  let provider = turnstileSiteKey ? 'turnstile' : (recaptchaSiteKey ? 'recaptcha' : 'none');
-  if (process.env.NODE_ENV === "test" || process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === "true") {
-      provider = 'none';
-  }
+
+  const isTestRuntime = process.env.NODE_ENV === 'test' || process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === 'true';
+  const initialProvider = isTestRuntime
+    ? 'none'
+    : (turnstileSiteKey ? 'turnstile' : (recaptchaSiteKey ? 'recaptcha' : 'none'));
 
   const [isReady, setIsReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState(null);
+  const [provider, setProvider] = useState(() => initialProvider);
+  const [lastErrorCode, setLastErrorCode] = useState(null);
   const turnstileWidgetIdRef = useRef(null);
+
+  useEffect(() => {
+    setProvider(initialProvider);
+    setLastErrorCode(null);
+    setIsReady(false);
+    setTurnstileToken(null);
+    turnstileWidgetIdRef.current = null;
+  }, [initialProvider]);
 
   useEffect(() => {
     if (provider === 'none') {
@@ -116,6 +125,7 @@ export function useReCaptcha() {
       theme: 'auto',
       size: 'flexible',
       callback: (token) => {
+        setLastErrorCode(null);
         setTurnstileToken(token);
         if (onToken) onToken(token);
       },
@@ -123,9 +133,18 @@ export function useReCaptcha() {
         setTurnstileToken(null);
         if (onToken) onToken(null);
       },
-      'error-callback': () => {
+      'error-callback': (errorCode) => {
+        const normalizedCode = String(errorCode || 'turnstile-widget-error');
+        setLastErrorCode(normalizedCode);
         setTurnstileToken(null);
         if (onToken) onToken(null);
+
+        // Fallback when Turnstile is misconfigured for this host (e.g. 600010)
+        if (recaptchaSiteKey) {
+          setProvider('recaptcha');
+        } else {
+          setProvider('none');
+        }
       },
     });
 
@@ -172,6 +191,7 @@ export function useReCaptcha() {
     isEnabled: provider !== 'none',
     isReady,
     provider,
+    lastErrorCode,
     mountTurnstile,
     resetTurnstile,
     turnstileToken,

@@ -265,6 +265,8 @@ async function verifyCaptchaToken(token, remoteIp) {
     return { ok: false, error: 'Captcha token is required' };
   }
 
+  const providerErrors = [];
+
   if (TURNSTILE_SECRET_KEY) {
     try {
       const params = new URLSearchParams();
@@ -281,9 +283,9 @@ async function verifyCaptchaToken(token, remoteIp) {
       if (data.success) {
         return { ok: true, provider: 'turnstile' };
       }
-      return { ok: false, error: `Turnstile verification failed: ${(data['error-codes'] || []).join(', ')}` };
+      providerErrors.push(`Turnstile verification failed: ${(data['error-codes'] || []).join(', ')}`);
     } catch (error) {
-      return { ok: false, error: `Turnstile verification error: ${error.message}` };
+      providerErrors.push(`Turnstile verification error: ${error.message}`);
     }
   }
 
@@ -303,10 +305,14 @@ async function verifyCaptchaToken(token, remoteIp) {
       if (data.success) {
         return { ok: true, provider: 'recaptcha' };
       }
-      return { ok: false, error: `reCAPTCHA verification failed: ${(data['error-codes'] || []).join(', ')}` };
+      providerErrors.push(`reCAPTCHA verification failed: ${(data['error-codes'] || []).join(', ')}`);
     } catch (error) {
-      return { ok: false, error: `reCAPTCHA verification error: ${error.message}` };
+      providerErrors.push(`reCAPTCHA verification error: ${error.message}`);
     }
+  }
+
+  if (providerErrors.length) {
+    return { ok: false, error: providerErrors.join(' | ') };
   }
 
   return { ok: false, error: 'Captcha is required but server secret key is not configured' };
