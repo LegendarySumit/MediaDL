@@ -8,31 +8,31 @@
 
 ### Development (Local)
 ```bash
+# Prerequisites: Redis, Node.js 20+, yt-dlp installed
+
 # Terminal 1 - Backend
 cd backend
-python -m uvicorn main:app --reload --port 8001
+npm install
+npm run dev                 # Runs on http://localhost:3001
 
 # Terminal 2 - Frontend  
 cd frontend
-npm run dev
+npm install
+npm run dev                 # Runs on http://localhost:3000
 ```
-Access: http://localhost:3002
+Access frontend: http://localhost:3000  
+Backend API: http://localhost:3001
 
-### Development (Docker)
+### Production - Render + Vercel Deployment
 ```bash
-docker-compose up --build
+# 1. Fork repository on GitHub
+# 2. Deploy backend to Render (see DEPLOYMENT.md)
+# 3. Deploy frontend to Vercel (see DEPLOYMENT.md)
+# 4. Configure environment variables in each platform
+# 5. Test: https://media-dl.vercel.app
 ```
-Access: http://localhost
 
-### Production Deployment
-```bash
-# 3-step production deploy with HTTPS
-cp .env.production backend/.env
-nano backend/.env  # Set DOMAIN and SECRET_KEY
-
-./deploy.sh  # Deploy application
-./setup-ssl.sh your-domain.com your@email.com  # Enable HTTPS
-```
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete step-by-step guide.
 
 ---
 
@@ -54,24 +54,28 @@ nano backend/.env  # Set DOMAIN and SECRET_KEY
 ## 📊 Technology Stack
 
 ### Frontend
-- **Framework:** Next.js 15.5 + React 19.0
+- **Framework:** Next.js 15.1 + React 19.0
 - **Styling:** Tailwind CSS 4.1
 - **Animations:** Framer Motion 12.34
 - **Theme:** Light/Dark mode with localStorage persistence
-- **API:** EventSource for real-time progress streaming
+- **Real-time:** EventSource for progress streaming
+- **E2E Tests:** Playwright
 
-### Backend
-- **Framework:** FastAPI 0.109.0 (Python 3.11+)
-- **Download Engine:** yt-dlp 2024.1.1
-- **Job Queue:** Redis 7.0 (fakeredis for development)
-- **Rate Limiting:** slowapi with configurable limits
-- **Logging:** Rotating file handler with console output
+### Backend (Node.js/Express)
+- **Framework:** Express 4.21 (Node.js 20+)
+- **Download Engine:** yt-dlp + FFmpeg
+- **Job Queue:** BullMQ + Redis
+- **Rate Limiting:** express-rate-limit + Helmet
+- **Logging:** Pino (structured JSON logs)
+- **Async Jobs:** Worker-based queue processing
+- **Testing:** Jest + Supertest
 
 ### Infrastructure
-- **Containerization:** Docker + docker-compose
-- **Reverse Proxy:** Nginx (production)
-- **Data Persistence:** Redis with 24-hour TTL
-- **Security:** Path traversal protection, rate limiting, input validation
+- **Frontend Hosting:** Vercel (serverless)
+- **Backend Hosting:** Render (web service)
+- **Database:** Redis (job queue, caching)
+- **CI/CD:** GitHub Actions
+- **Security:** Helmet, CORS, rate limiting, captcha verification (Turnstile/reCAPTCHA)
 
 ---
 

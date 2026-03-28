@@ -1,581 +1,1049 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { exec, execSync } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const pino = require('pino');
+const pinoHttp = require('pino-http');
+const IORedis = require('ioredis');
+const { Queue, Worker, QueueEvents } = require('bullmq');
+const cron = require('node-cron');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT || 3001);
+const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
+const LOGS_DIR = path.join(__dirname, 'logs');
+const QUEUE_NAME = 'media-downloads';
+const DOWNLOAD_TTL_MINUTES = Number(process.env.DOWNLOAD_TTL_MINUTES || 60);
+const QUEUE_DISABLED = process.env.DISABLE_QUEUE === 'true' || process.env.NODE_ENV === 'test';
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
-// ─── CORS Configuration for Vercel + Render ──────────────────────────────────
-const corsOptions = {
-    origin: [
-        'http://localhost:3000',           // Local dev
-        'https://media-dl.vercel.app',     // Vercel frontend
-        'https://mediadl.onrender.com',    // Render backend (self)
-    ],
-    credentials: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-};
-app.use(cors(corsOptions));
-app.use(express.json());
+const CAPTCHA_REQUIRED = process.env.CAPTCHA_REQUIRED === 'true';
+const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '';
+const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '';
 
-// ─── FIXED: Proper server structure with Invidious fallback ─────────────────
+fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+fs.mkdirSync(LOGS_DIR, { recursive: true });
 
-// ─── Utility: find yt-dlp binary ─────────────────────────────────────────────
-function getYtDlpBinary() { return 'yt-dlp'; }
+const logger = pino(
+  {
+    level: process.env.LOG_LEVEL || 'info',
+    base: undefined,
+    timestamp: pino.stdTimeFunctions.isoTime,
+  },
+  pino.multistream([
+    { stream: process.stdout },
+    { stream: pino.destination({ dest: path.join(LOGS_DIR, 'app.log'), mkdir: true, sync: false }) },
+  ])
+);
 
-// ─── Utility: check if ffmpeg is available ────────────────────────────────────
-function isFfmpegAvailable() {
-    try {
-        execSync('ffmpeg -version', { stdio: 'ignore', timeout: 5000 });
-        return true;
-    } catch {
-        return false;
-    }
-}
+app.use(pinoHttp({ logger }));
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        'script-src': ["'self'", ...(IS_DEV ? ["'unsafe-eval'"] : [])],
+      },
+    },
+  })
+);
 
-// ─── Cookie auth setup ──────────────────────────────────────────────────────────
-let COOKIE_FILE = null;
-
-function initCookies() {
-    // First, try to use cookies from Downloads folder directly
-    const downloadsPath = path.join(os.homedir(), 'Downloads', 'cookies.txt');
-    if (fs.existsSync(downloadsPath)) {
-        COOKIE_FILE = downloadsPath;
-        console.log('✅ Using cookies from:', downloadsPath);
-        return;
-    }
-
-    // Fallback to env var
-    const raw = process.env.YOUTUBE_COOKIES;
-    if (!raw) {
-        console.log('⚠️  No cookies found (env var or Downloads/cookies.txt)');
-        return;
-    }
-    try {
-        let cookieContent;
-        try {
-            cookieContent = Buffer.from(raw, 'base64').toString('utf8');
-            if (!cookieContent.includes('\t') && !cookieContent.startsWith('#')) {
-                throw new Error('not base64');
-            }
-        } catch {
-            cookieContent = raw;
-        }
-
-        COOKIE_FILE = path.join(os.tmpdir(), `yt_cookies_${crypto.randomBytes(6).toString('hex')}.txt`);
-        fs.writeFileSync(COOKIE_FILE, cookieContent, 'utf8');
-        console.log('✅ YouTube cookies loaded from YOUTUBE_COOKIES env var.');
-    } catch (e) {
-        console.error('❌ Failed to write cookie file:', e.message);
-    }
-}
-
-initCookies();
-
-// ─── Proxy setup ────────────────────────────────────────────────────────────────
-let PROXY_URL = null;
-function initProxy() {
-    const proxy = process.env.YOUTUBE_PROXY || process.env.PROXY;
-    if (proxy) {
-        PROXY_URL = proxy;
-        console.log('✅ Proxy loaded:', proxy.substring(0, 30) + '...');
-    } else {
-        console.log('⚠️  YOUTUBE_PROXY env var not set — YouTube datacenter IPs may be blocked.');
-        console.log('    To fix: Set YOUTUBE_PROXY="http://us-ca.proxymesh.com:31280" on Render');
-    }
-}
-initProxy();
-
-// ─── Utility: detect if error is due to invalid/rotated cookies or bot block ─
-function isCookieError(msg) {
-    return msg.includes('no longer valid') ||
-           msg.includes('cookies are no longer') ||
-           msg.includes('Sign in to confirm') ||
-           msg.includes('bot') ||
-           msg.includes('account has been terminated') ||
-           msg.includes('Please sign in');
-}
-
-// ─── Player client strategies (tried in order) ────────────────────────────────
-// Optimized for speed: only try the fastest, most reliable clients
-const PLAYER_CLIENTS = [
-    'web',          // Standard web client (most reliable)
-    'mweb',         // Mobile web (faster fallback)
+const PROD_FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://media-dl.vercel.app';
+const DEV_FRONTEND_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:3002',
+  'http://localhost:3003',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3002',
+  'http://127.0.0.1:3003',
 ];
+const ALLOWED_ORIGINS = process.env.NODE_ENV === 'production'
+  ? [PROD_FRONTEND_ORIGIN]
+  : [...DEV_FRONTEND_ORIGINS, PROD_FRONTEND_ORIGIN];
 
-// ─── Utility: build base yt-dlp flags with player client ─────────────────────
-function getBaseFlags(useCookies = true, playerClient = 'web') {
-    const isWindows = process.platform === 'win32';
-    const flags = [
-        '--no-check-certificates',
-        // Use Node.js as JavaScript runtime for YouTube signature solving
-        '--js-runtimes', 'node',
-        // Optimize for speed: faster socket timeout
-        '--socket-timeout', '10',
-        // Limit retries to speed up failure
-        '--retries', '1',
-    ];
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-captcha-token'],
+};
 
-    // Use proxy if available (residential proxy bypasses YouTube datacenter blocks)
-    if (PROXY_URL) {
-        // Don't add quotes - yt-dlp handles the URL directly
-        flags.push('--proxy', PROXY_URL);
-    }
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '1mb' }));
 
-    // Use different player clients to bypass bot detection
-    // Valid clients: web, android, ios, mweb, tv (NOT tv_embedded anymore)
-    if (isWindows) {
-        flags.push(`--extractor-args "youtube:player_client=${playerClient}"`);
-    } else {
-        flags.push(`--extractor-args 'youtube:player_client=${playerClient}'`);
-    }
-
-    // Only use cookies if they exist AND useCookies is true
-    if (useCookies && COOKIE_FILE) {
-        if (isWindows) {
-            flags.push(`--cookies "${COOKIE_FILE}"`);
-        } else {
-            const safeCookiePath = COOKIE_FILE.replace(/'/g, "'\\''");
-            flags.push(`--cookies '${safeCookiePath}'`);
-        }
-    }
-    return flags.join(' ');
-}
-
-// ─── Utility: run yt-dlp with multi-strategy fallback ───────────────────────
-function runYtDlp(args, timeoutMs = 45000) {
-    const bin = getYtDlpBinary();
-    const isWindows = process.platform === 'win32';
-    const shellOpts = isWindows
-        ? { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }
-        : { shell: '/bin/sh', maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs };
-
-    // Build all attempts: prioritize cookies (faster), then fallback
-    // OPTIMIZED: Try only the 2 most reliable clients first (web + mweb), then others
-    const attempts = [];
-    const primaryClients = ['web', 'mweb'];  // Most reliable - try with cookies
-    const fallbackClients = ['android', 'ios'];  // Fallback options
-    
-    // Primary attempts with cookies (fastest)
-    for (const client of primaryClients) {
-        attempts.push({ client, useCookies: true });
-    }
-    // Secondary fallback with cookies
-    for (const client of fallbackClients) {
-        attempts.push({ client, useCookies: true });
-    }
-    // Only try without cookies if all with-cookies attempts fail
-    for (const client of primaryClients) {
-        attempts.push({ client, useCookies: false });
-    }
-
-    function tryNext(index) {
-        if (index >= attempts.length) {
-            return Promise.reject(new Error(
-                'YouTube is blocking this server\'s IP. Try using a different video source or enable fresh cookies.'
-            ));
-        }
-
-        const { client, useCookies } = attempts[index];
-        const cmd = `${bin} ${getBaseFlags(useCookies, client)} ${args}`;
-
-        return new Promise((resolve, reject) => {
-            exec(cmd, shellOpts, (err, stdout, stderr) => {
-                if (!err) {
-                    console.log(`[yt-dlp] ✅ Success with client=${client} cookies=${useCookies}`);
-                    return resolve(stdout.trim());
-                }
-
-                const msg = stderr || err.message || '';
-                const firstLine = msg.split('\n')[0];
-                console.warn(`[yt-dlp] ⚠️  client=${client} cookies=${useCookies} failed: ${firstLine}`);
-
-                // Check if it's a recoverable error
-                if (firstLine.includes('ERROR') && !firstLine.includes('Unsupported')) {
-                    console.log(`[yt-dlp] → Trying next strategy...`);
-                }
-
-                // Try next strategy
-                tryNext(index + 1).then(resolve).catch(reject);
-            });
-        });
-    }
-
-    return tryNext(0);
-}
-
-// ─── GET /api/health ─────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', message: 'MediaDL Server is running' });
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' },
 });
 
-// ─── DIAGNOSTIC: GET /api/test-ytdlp ─────────────────────────────────────────
-app.get('/api/test-ytdlp', (req, res) => {
-    const { url } = req.query;
-    const testUrl = url || 'https://youtu.be/kPa7bsKwL-c';
-    
-    const bin = getYtDlpBinary();
-    const baseFlags = getBaseFlags(true, 'tv_embedded');
-    const cmd = `${bin} ${baseFlags} --dump-json --no-playlist "${testUrl}"`;
-    
-    console.log('[test-ytdlp] Running command:', cmd.substring(0, 100) + '...');
-    
-    exec(cmd, { shell: true, maxBuffer: 20 * 1024 * 1024, timeout: 120000 }, (err, stdout, stderr) => {
-        if (err) {
-            console.log('[test-ytdlp] Error:', err.message);
-            res.json({
-                success: false,
-                command: cmd.substring(0, 200),
-                error: err.message,
-                stderr: stderr.substring(0, 500)
-            });
-        } else {
-            try {
-                const data = JSON.parse(stdout);
-                res.json({
-                    success: true,
-                    title: data.title,
-                    duration: data.duration,
-                    formats_count: data.formats ? data.formats.length : 0
-                });
-            } catch (e) {
-                res.json({
-                    success: false,
-                    error: 'Failed to parse JSON response',
-                    stderr: stderr.substring(0, 500)
-                });
-            }
-        }
-    });
+const downloadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Download limit exceeded. Try again in one hour.' },
 });
 
-// ─── Helper: detect platform from URL ──────────────────────────────────────────
-function detectPlatform(url) {
-    if (!url) return 'unknown';
-    const urlLower = url.toLowerCase();
-    
-    if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) return 'youtube';
-    if (urlLower.includes('instagram.com') || urlLower.includes('instagr.am')) return 'instagram';
-    if (urlLower.includes('tiktok.com') || urlLower.includes('vm.tiktok')) return 'tiktok';
-    if (urlLower.includes('facebook.com') || urlLower.includes('fb.watch')) return 'facebook';
-    
-    return 'other';
+app.use('/api', apiLimiter);
+app.use('/downloads', express.static(DOWNLOADS_DIR, { maxAge: 0, etag: true }));
+
+function getYtDlpBinary() {
+  return 'yt-dlp';
 }
 
-// ─── Helper: extract YouTube video ID ──────────────────────────────────────────
-function extractVideoId(url) {
-    const patterns = [
-        /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-        /[a-zA-Z0-9_-]{11}/
-    ];
-    for (const pattern of patterns) {
-        const match = url.match(pattern);
-        if (match && match[1] && match[1].length === 11) return match[1];
-    }
-    return null;
+function isFfmpegAvailable() {
+  try {
+    execSync('ffmpeg -version', { stdio: 'ignore', timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-// ─── GET /api/cookie-status ───────────────────────────────────────────────────
-app.get('/api/cookie-status', (req, res) => {
-    res.json({
-        cookies_loaded: !!COOKIE_FILE,
-        cookie_file: COOKIE_FILE ? '[active]' : null,
-        hint: COOKIE_FILE
-            ? 'YouTube cookies are active. Bot detection should be bypassed.'
-            : 'No cookies loaded. Set YOUTUBE_COOKIES env var to fix bot detection.',
-    });
-});
-
-// ─── GET /api/proxy-status ────────────────────────────────────────────────────
-app.get('/api/proxy-status', (req, res) => {
-    res.json({
-        proxy_active: !!PROXY_URL,
-        proxy_url: PROXY_URL ? '[active-residential-proxy]' : null,
-        hint: PROXY_URL
-            ? 'Residential proxy is active. YouTube datacenter blocks should be bypassed.'
-            : 'No proxy loaded. Set YOUTUBE_PROXY env var to bypass YouTube datacenter IP blocks.',
-    });
-});
-
-// ─── GET /api/check-ytdlp ─────────────────────────────────────────────────────
-app.get('/api/check-ytdlp', async (req, res) => {
+function splitPool(raw) {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[')) {
     try {
-        const version = await runYtDlp('--version', 8000);
-        const ffmpeg = isFfmpegAvailable();
-        res.json({ available: true, version: version.trim(), ffmpeg, cookies: !!COOKIE_FILE });
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.map((v) => String(v).trim()).filter(Boolean);
     } catch {
-        res.json({ available: false, error: 'yt-dlp not found in PATH', ffmpeg: false });
+      logger.warn('Failed to parse JSON pool config; falling back to comma split');
     }
-});
+  }
+  return trimmed.split(',').map((v) => v.trim()).filter(Boolean);
+}
 
-// ─── GET /api/info?url=<video_url> ────────────────────────────────────────────
-app.get('/api/info', async (req, res) => {
-    const { url } = req.query;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
-
-    const ffmpeg = isFfmpegAvailable();
-    const platform = detectPlatform(url);
-
-    // Try to fetch video info - works for YouTube, Instagram, TikTok, etc.
-    async function tryFetchInfo() {
-        try {
-            // yt-dlp supports many platforms - try directly
-            const raw = await runYtDlp(`--dump-json --no-playlist "${url}"`);
-            return JSON.parse(raw);
-        } catch (err) {
-            console.warn(`[api/info] ${platform} extraction failed:`, err.message);
-            throw err;
-        }
+function decodeMaybeBase64(raw) {
+  try {
+    const decoded = Buffer.from(raw, 'base64').toString('utf8');
+    if (decoded.includes('\t') || decoded.startsWith('#')) {
+      return decoded;
     }
+  } catch {
+  }
+  return raw;
+}
 
+function materializeCookieStringToFile(cookieText, label) {
+  const filePath = path.join(os.tmpdir(), `yt_cookie_${label}_${crypto.randomBytes(6).toString('hex')}.txt`);
+  fs.writeFileSync(filePath, cookieText, 'utf8');
+  return filePath;
+}
+
+function buildCookiePool() {
+  const pool = [];
+  const downloadsPath = path.join(os.homedir(), 'Downloads', 'cookies.txt');
+  if (fs.existsSync(downloadsPath)) {
+    pool.push(downloadsPath);
+  }
+
+  if (process.env.YOUTUBE_COOKIES) {
     try {
-        const info = await tryFetchInfo();
-        const rawFormats = info.formats || [];
-
-        // ── Build smart merged format list ──────────────────────────────────
-        const seen = new Set();
-        const formats = [];
-
-        // Helper: find best audio stream (highest tbr)
-        const audioStreams = rawFormats.filter(f =>
-            f.acodec && f.acodec !== 'none' &&
-            (!f.vcodec || f.vcodec === 'none')
-        ).sort((a, b) => (b.tbr || 0) - (a.tbr || 0));
-
-        const bestAudioId = audioStreams[0]?.format_id || 'bestaudio';
-
-        // Video streams (video-only or video+audio)
-        const videoStreams = rawFormats
-            .filter(f => f.vcodec && f.vcodec !== 'none' && f.height)
-            .sort((a, b) => (b.height || 0) - (a.height || 0));
-
-        for (const f of videoStreams) {
-            const height = f.height || 0;
-            const key = `${height}p_${f.ext}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-
-            const hasAudio = f.acodec && f.acodec !== 'none';
-            const fps = f.fps ? ` ${Math.round(f.fps)}fps` : '';
-            const size = f.filesize ? ` (~${formatBytes(f.filesize)})` : '';
-
-            if (hasAudio) {
-                formats.push({
-                    format_id: f.format_id,
-                    ext: f.ext,
-                    height,
-                    label: `${height}p${fps} [${f.ext}] Video+Audio${size}`,
-                    needsMerge: false,
-                });
-            } else if (ffmpeg) {
-                formats.push({
-                    format_id: `${f.format_id}+${bestAudioId}`,
-                    ext: 'mp4',
-                    height,
-                    label: `${height}p${fps} [mp4] Merged HD${size}`,
-                    needsMerge: true,
-                });
-            } else {
-                formats.push({
-                    format_id: f.format_id,
-                    ext: f.ext,
-                    height,
-                    label: `${height}p${fps} [${f.ext}] Video only (no audio — install ffmpeg)${size}`,
-                    needsMerge: false,
-                });
-            }
-        }
-
-        // ── Preset options at the top ────────────────────────────────────────
-        const presets = [];
-
-        presets.push({
-            format_id: ffmpeg ? 'bestvideo+bestaudio/best' : 'best',
-            ext: 'mp4',
-            label: ffmpeg
-                ? '⭐ Best Quality (Auto-Merged MP4)'
-                : '⭐ Best Quality (MP4)',
-            note: 'Recommended',
-        });
-
-        if (ffmpeg) {
-            presets.push({
-                format_id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-                ext: 'mp4',
-                label: '🎬 1080p HD (Merged MP4)',
-                note: '',
-            });
-            presets.push({
-                format_id: 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-                ext: 'mp4',
-                label: '📺 720p (Merged MP4)',
-                note: '',
-            });
-            presets.push({
-                format_id: 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-                ext: 'mp4',
-                label: '📱 480p (Merged MP4)',
-                note: '',
-            });
-        }
-
-        // Audio-only preset
-        presets.push({
-            format_id: 'bestaudio/best',
-            ext: 'mp3',
-            label: '🎵 Audio Only (Best Quality)',
-            note: 'Audio only',
-        });
-
-        res.json({
-            title: info.title,
-            thumbnail: info.thumbnail,
-            duration: info.duration,
-            duration_string: info.duration_string || formatDuration(info.duration),
-            uploader: info.uploader || info.channel || 'Unknown',
-            view_count: info.view_count,
-            like_count: info.like_count,
-            description: info.description ? info.description.slice(0, 300) : '',
-            webpage_url: info.webpage_url || url,
-            extractor: info.extractor_key || info.extractor || 'Unknown',
-            ffmpeg,
-            formats: [...presets, ...formats.slice(0, 18)],
-        });
-    } catch (err) {
-        console.error('Info error:', err.message);
-        
-        // Diagnostic response
-        const diagnostic = {
-            error: err.message || `Failed to fetch ${platform} info`,
-            platform: platform,
-            diagnostics: {
-                cookies_set: !!process.env.YOUTUBE_COOKIES,
-                proxy_set: !!process.env.YOUTUBE_PROXY,
-                ffmpeg_available: ffmpeg,
-            }
-        };
-        
-        // Add hints based on platform
-        if (platform === 'youtube') {
-            if (!process.env.YOUTUBE_COOKIES) {
-                diagnostic.hint = 'YouTube: Set YOUTUBE_COOKIES env var for better access';
-            } else if (!process.env.YOUTUBE_PROXY) {
-                diagnostic.hint = 'YouTube: Consider setting YOUTUBE_PROXY if IP is blocked';
-            } else {
-                diagnostic.hint = 'YouTube: This video may be restricted or unavailable';
-            }
-        } else if (platform === 'instagram') {
-            diagnostic.hint = 'Instagram: This may require a valid account or the content may be private';
-        } else {
-            diagnostic.hint = `${platform}: This content may be unavailable, private, or region-restricted`;
-        }
-        
-        res.status(500).json(diagnostic);
+      const single = decodeMaybeBase64(process.env.YOUTUBE_COOKIES);
+      pool.push(materializeCookieStringToFile(single, 'single'));
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to materialize YOUTUBE_COOKIES');
     }
-});
+  }
 
-// ─── GET /api/download ────────────────────────────────────────────────────────
-app.get('/api/download', async (req, res) => {
-    const { url, format, title } = req.query;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+  const cookiePoolRaw = splitPool(process.env.YOUTUBE_COOKIES_POOL || '');
+  cookiePoolRaw.forEach((entry, index) => {
+    try {
+      const content = decodeMaybeBase64(entry);
+      pool.push(materializeCookieStringToFile(content, `pool_${index}`));
+    } catch (error) {
+      logger.error({ err: error, index }, 'Failed to materialize cookie pool entry');
+    }
+  });
 
-    const formatId = format || 'bestvideo+bestaudio/best';
-    const safeTitle = (title || 'video').replace(/[^a-zA-Z0-9 _\-]/g, '_').slice(0, 80);
-    const ffmpeg = isFfmpegAvailable();
+  return [...new Set(pool)];
+}
 
-    // Determine output format and headers quickly
-    const isAudioOnly = formatId === 'bestaudio/best' || formatId.startsWith('bestaudio');
-    const ext = isAudioOnly ? 'mp3' : 'mp4';
-    const downloadName = `${safeTitle}.${ext}`;
-    const mimeType = getMimeType(ext);
+function buildProxyPool() {
+  const pool = [];
+  if (process.env.YOUTUBE_PROXY) pool.push(process.env.YOUTUBE_PROXY);
+  if (process.env.PROXY) pool.push(process.env.PROXY);
+  const additional = splitPool(process.env.YOUTUBE_PROXY_POOL || '');
+  for (const proxy of additional) pool.push(proxy);
+  return [...new Set(pool)];
+}
 
-    // Set response headers IMMEDIATELY
-    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Transfer-Encoding', 'binary');
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+const proxyPool = buildProxyPool();
+const cookiePool = buildCookiePool();
+let proxyIndex = 0;
+let cookieIndex = 0;
 
-    // Build optimized yt-dlp command for streaming
-    const postProcess = isAudioOnly && ffmpeg
-        ? '-x --audio-format mp3 --audio-quality 0'
-        : ffmpeg ? '--merge-output-format mp4' : '';
+function getNextProxy() {
+  if (!proxyPool.length) return null;
+  const proxy = proxyPool[proxyIndex % proxyPool.length];
+  proxyIndex += 1;
+  return proxy;
+}
 
-    const ytdlpArgs = [
-        '-o -',  // Stream to stdout
-        `-f "${formatId}"`,
-        '--no-playlist',
-        '--no-warnings',
-        '--quiet',  // Less output = faster
-        postProcess,
-        `"${url}"`,
-    ].filter(Boolean).join(' ');
+function getNextCookieFile() {
+  if (!cookiePool.length) return null;
+  const cookieFile = cookiePool[cookieIndex % cookiePool.length];
+  cookieIndex += 1;
+  return cookieFile;
+}
 
-    console.log(`[download] Streaming: format=${formatId}, url=${url}`);
+function alertPoolIssue(source, details) {
+  logger.warn({ source, details }, 'Proxy/cookie pool issue detected');
+}
 
-    // Stream directly from yt-dlp to client (no temp file)
-    const child = exec(getYtDlpBinary() + ' ' + ytdlpArgs, async (err) => {
-        if (err && !res.headersSent) {
-            console.error('[download] Error:', err.message);
-            try { res.status(500).json({ error: 'Download failed' }); } catch { }
-        }
-    });
+function registerExtractionFailure(message) {
+  const lowered = String(message || '').toLowerCase();
+  if (
+    lowered.includes('sign in') ||
+    lowered.includes('429') ||
+    lowered.includes('too many requests') ||
+    lowered.includes('forbidden') ||
+    lowered.includes('cookies are no longer')
+  ) {
+    alertPoolIssue('yt-dlp', message);
+  }
+}
 
-    child.stdout.pipe(res);
-    child.stderr.on('data', (data) => {
-        const msg = data.toString();
-        if (msg.includes('ERROR')) console.error('[download]', msg);
-    });
+function detectPlatform(url) {
+  if (!url) return 'unknown';
+  const urlLower = url.toLowerCase();
+  if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) return 'youtube';
+  if (urlLower.includes('instagram.com') || urlLower.includes('instagr.am')) return 'instagram';
+  if (urlLower.includes('tiktok.com') || urlLower.includes('vm.tiktok')) return 'tiktok';
+  if (urlLower.includes('facebook.com') || urlLower.includes('fb.watch')) return 'facebook';
+  return 'other';
+}
 
-    res.on('close', () => {
-        try { child.kill(); } catch { }
-    });
-});
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatBytes(bytes) {
-    if (!bytes) return '';
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function formatDuration(seconds) {
-    if (!seconds) return '';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    return `${m}:${String(s).padStart(2, '0')}`;
+  if (!seconds) return '';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function getMimeType(ext) {
-    const map = {
-        mp4: 'video/mp4',
-        webm: 'video/webm',
-        mkv: 'video/x-matroska',
-        mp3: 'audio/mpeg',
-        m4a: 'audio/mp4',
-        ogg: 'audio/ogg',
-        opus: 'audio/ogg',
-    };
-    return map[ext] || 'application/octet-stream';
+  const map = {
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    mkv: 'video/x-matroska',
+    mp3: 'audio/mpeg',
+    m4a: 'audio/mp4',
+    ogg: 'audio/ogg',
+    opus: 'audio/ogg',
+  };
+  return map[ext] || 'application/octet-stream';
 }
 
-// ─── Start server ─────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-    console.log(`\n🚀 MediaDL Server running at http://localhost:${PORT}`);
-    console.log(`🎬 ffmpeg: ${isFfmpegAvailable() ? '✅ available (merging enabled)' : '❌ not found (install ffmpeg to enable merging)'}`);
-    console.log(`🔐 Cookies: ${COOKIE_FILE ? '✅ loaded' : '❌ not set'}`);
-    console.log(`🌐 Proxy: ${PROXY_URL ? '✅ active' : '❌ not set (YouTube datacenter IPs may be blocked)'}`);
-    console.log(`\nEndpoints:`);
-    console.log(`  GET /api/health`);
-    console.log(`  GET /api/info?url=<video_url>`);
-    console.log(`  GET /api/download?url=<video_url>&format=<format_id>`);
-    console.log(`  GET /api/check-ytdlp`);
-    console.log(`  GET /api/cookie-status`);
-    console.log(`  GET /api/proxy-status\n`);
+async function verifyCaptchaToken(token, remoteIp) {
+  if (!CAPTCHA_REQUIRED) {
+    return { ok: true, bypassed: true };
+  }
+
+  if (!token) {
+    return { ok: false, error: 'Captcha token is required' };
+  }
+
+  if (TURNSTILE_SECRET_KEY) {
+    try {
+      const params = new URLSearchParams();
+      params.set('secret', TURNSTILE_SECRET_KEY);
+      params.set('response', token);
+      if (remoteIp) params.set('remoteip', remoteIp);
+
+      const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const data = await response.json();
+      if (data.success) {
+        return { ok: true, provider: 'turnstile' };
+      }
+      return { ok: false, error: `Turnstile verification failed: ${(data['error-codes'] || []).join(', ')}` };
+    } catch (error) {
+      return { ok: false, error: `Turnstile verification error: ${error.message}` };
+    }
+  }
+
+  if (RECAPTCHA_SECRET_KEY) {
+    try {
+      const params = new URLSearchParams();
+      params.set('secret', RECAPTCHA_SECRET_KEY);
+      params.set('response', token);
+      if (remoteIp) params.set('remoteip', remoteIp);
+
+      const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const data = await response.json();
+      if (data.success) {
+        return { ok: true, provider: 'recaptcha' };
+      }
+      return { ok: false, error: `reCAPTCHA verification failed: ${(data['error-codes'] || []).join(', ')}` };
+    } catch (error) {
+      return { ok: false, error: `reCAPTCHA verification error: ${error.message}` };
+    }
+  }
+
+  return { ok: false, error: 'Captcha is required but server secret key is not configured' };
+}
+
+async function requireCaptcha(req, res, next) {
+  const token = req.header('x-captcha-token') || req.query.captcha_token || (req.body && req.body.captcha_token);
+  const remoteIp = req.ip;
+  const result = await verifyCaptchaToken(token, remoteIp);
+  if (!result.ok) {
+    return res.status(403).json({ error: result.error });
+  }
+  return next();
+}
+
+const redisConfig = process.env.REDIS_URL
+  ? process.env.REDIS_URL
+  : {
+      host: process.env.REDIS_HOST || '127.0.0.1',
+      port: Number(process.env.REDIS_PORT || 6379),
+      password: process.env.REDIS_PASSWORD || undefined,
+      db: Number(process.env.REDIS_DB || 0),
+      maxRetriesPerRequest: null,
+      enableReadyCheck: true,
+    };
+
+let redisConnection = null;
+let downloadQueue = null;
+let queueEvents = null;
+let worker = null;
+
+const jobState = new Map();
+const sseClients = new Map();
+
+function setJobState(jobId, patch) {
+  const current = jobState.get(jobId) || {
+    jobId,
+    status: 'queued',
+    progress: 0,
+    message: 'Queued',
+    createdAt: Date.now(),
+  };
+  const next = { ...current, ...patch, updatedAt: Date.now() };
+  jobState.set(jobId, next);
+  return next;
+}
+
+function sendSseEvent(jobId, payload) {
+  const clients = sseClients.get(jobId);
+  if (!clients || clients.size === 0) return;
+  const data = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const client of clients) {
+    try {
+      client.write(data);
+    } catch {
+    }
+  }
+}
+
+function emitJobUpdate(jobId, patch) {
+  const state = setJobState(jobId, patch);
+  sendSseEvent(jobId, state);
+  return state;
+}
+
+function getAttemptConfigs() {
+  const attempts = [];
+  const clients = ['web', 'mweb', 'android', 'ios'];
+  for (let i = 0; i < clients.length; i += 1) {
+    attempts.push({
+      playerClient: clients[i],
+      proxy: getNextProxy(),
+      cookieFile: getNextCookieFile(),
+    });
+  }
+  return attempts;
+}
+
+function buildYtArgs(base, options) {
+  const args = [
+    '--no-check-certificates',
+    '--js-runtimes', 'node',
+    '--socket-timeout', '10',
+    '--retries', '1',
+    '--extractor-args', `youtube:player_client=${options.playerClient || 'web'}`,
+    ...base,
+  ];
+
+  if (options.proxy) {
+    args.push('--proxy', options.proxy);
+  }
+  if (options.cookieFile) {
+    args.push('--cookies', options.cookieFile);
+  }
+
+  return args;
+}
+
+async function runYtDlp(extraArgs, timeoutMs = 45000) {
+  const attempts = getAttemptConfigs();
+  let lastErr = 'Unknown extraction error';
+
+  for (const attempt of attempts) {
+    const args = buildYtArgs(extraArgs, attempt);
+    const output = await new Promise((resolve) => {
+      const child = spawn(getYtDlpBinary(), args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false });
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        try { child.kill('SIGKILL'); } catch { }
+      }, timeoutMs);
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        resolve({ ok: false, message: err.message || 'Spawn error' });
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (!timedOut && code === 0) {
+          resolve({ ok: true, stdout });
+          return;
+        }
+        const msg = timedOut ? `yt-dlp timed out after ${timeoutMs}ms` : (stderr || `yt-dlp exited with code ${code}`);
+        resolve({ ok: false, message: msg });
+      });
+    });
+
+    if (output.ok) {
+      logger.info({ playerClient: attempt.playerClient }, 'yt-dlp command succeeded');
+      return output.stdout.trim();
+    }
+
+    lastErr = output.message;
+    registerExtractionFailure(output.message);
+    logger.warn({
+      playerClient: attempt.playerClient,
+      hasProxy: Boolean(attempt.proxy),
+      hasCookie: Boolean(attempt.cookieFile),
+      message: output.message.split('\n')[0],
+    }, 'yt-dlp attempt failed; trying next strategy');
+  }
+
+  throw new Error(lastErr);
+}
+
+async function processDownloadJob(job) {
+  const { url, formatId, title } = job.data;
+  const ffmpeg = isFfmpegAvailable();
+  const safeTitle = (title || 'video').replace(/[^a-zA-Z0-9 _\-]/g, '_').slice(0, 80);
+  const isAudioOnly = formatId === 'bestaudio/best' || String(formatId || '').startsWith('bestaudio');
+  const desiredExt = isAudioOnly ? 'mp3' : 'mp4';
+
+  emitJobUpdate(job.id, {
+    status: 'processing',
+    progress: 0,
+    message: 'Preparing downloader',
+    title: safeTitle,
+  });
+
+  const outputTemplate = path.join(DOWNLOADS_DIR, `${job.id}-%(title).60s.%(ext)s`);
+  const attempts = getAttemptConfigs();
+  let lastError = 'Download failed';
+
+  for (let attemptNo = 0; attemptNo < attempts.length; attemptNo += 1) {
+    const attempt = attempts[attemptNo];
+    const args = buildYtArgs([
+      '--newline',
+      '--no-playlist',
+      '--no-warnings',
+      '--progress',
+      '-f', formatId,
+      '-o', outputTemplate,
+    ], attempt);
+
+    if (isAudioOnly && ffmpeg) {
+      args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+    } else if (ffmpeg) {
+      args.push('--merge-output-format', 'mp4');
+    }
+
+    args.push(url);
+
+    emitJobUpdate(job.id, {
+      status: 'processing',
+      message: `Downloading... attempt ${attemptNo + 1}/${attempts.length}`,
+    });
+
+    const result = await new Promise((resolve) => {
+      const child = spawn(getYtDlpBinary(), args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+      });
+
+      let stderrBuffer = '';
+      let resolvedPath = null;
+      let lastPercent = 0;
+
+      const updateProgressFromChunk = (rawChunk) => {
+        const lines = rawChunk.replace(/\r/g, '\n').split('\n');
+        for (const line of lines) {
+          if (!line) continue;
+          const percentMatch = line.match(/(\d+(?:\.\d+)?)%/);
+          if (percentMatch) {
+            const value = Math.max(0, Math.min(99, Math.floor(Number(percentMatch[1]))));
+            if (value > lastPercent) {
+              lastPercent = value;
+              emitJobUpdate(job.id, {
+                status: 'processing',
+                progress: value,
+                message: `Downloading ${value}%`,
+              });
+              try {
+                job.updateProgress(value);
+              } catch {
+              }
+            }
+          }
+
+          const destinationMatch = line.match(/Destination:\s+(.+)$/i);
+          if (destinationMatch && destinationMatch[1]) {
+            resolvedPath = destinationMatch[1].trim();
+          }
+        }
+      };
+
+      child.stdout.on('data', (chunk) => {
+        updateProgressFromChunk(chunk.toString());
+      });
+
+      child.stderr.on('data', (chunk) => {
+        const text = chunk.toString();
+        stderrBuffer += text;
+        updateProgressFromChunk(text);
+      });
+
+      child.on('error', (err) => {
+        resolve({ ok: false, error: err.message, filePath: resolvedPath });
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve({ ok: true, filePath: resolvedPath, stderr: stderrBuffer });
+          return;
+        }
+        resolve({ ok: false, error: stderrBuffer || `yt-dlp exited with code ${code}`, filePath: resolvedPath });
+      });
+    });
+
+    if (result.ok) {
+      let finalPath = result.filePath;
+      if (!finalPath || !fs.existsSync(finalPath)) {
+        const candidates = fs
+          .readdirSync(DOWNLOADS_DIR)
+          .filter((name) => name.startsWith(String(job.id)))
+          .map((name) => path.join(DOWNLOADS_DIR, name))
+          .filter((candidatePath) => fs.existsSync(candidatePath));
+        finalPath = candidates.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] || null;
+      }
+
+      if (!finalPath) {
+        throw new Error('Download finished but output file was not found');
+      }
+
+      const fileName = path.basename(finalPath);
+      emitJobUpdate(job.id, {
+        status: 'completed',
+        progress: 100,
+        message: 'Download ready',
+        filePath: finalPath,
+        fileName,
+        fallbackUrl: `/downloads/${encodeURIComponent(fileName)}`,
+        mimeType: getMimeType(path.extname(finalPath).replace('.', '') || desiredExt),
+        completedAt: Date.now(),
+      });
+      try {
+        job.updateProgress(100);
+      } catch {
+      }
+      return { fileName };
+    }
+
+    lastError = result.error || 'Unknown download error';
+    registerExtractionFailure(lastError);
+    logger.warn({
+      jobId: job.id,
+      attempt: attemptNo + 1,
+      hasProxy: Boolean(attempt.proxy),
+      hasCookie: Boolean(attempt.cookieFile),
+      error: String(lastError).split('\n')[0],
+    }, 'Download attempt failed');
+  }
+
+  emitJobUpdate(job.id, {
+    status: 'failed',
+    message: String(lastError).split('\n')[0],
+    error: String(lastError),
+    completedAt: Date.now(),
+  });
+
+  throw new Error(lastError);
+}
+
+function initQueue() {
+  if (QUEUE_DISABLED) {
+    logger.warn('Queue initialization is disabled by environment');
+    return;
+  }
+
+  redisConnection = new IORedis(redisConfig);
+  redisConnection.on('error', (err) => logger.error({ err }, 'Redis connection error'));
+
+  downloadQueue = new Queue(QUEUE_NAME, { connection: redisConnection });
+  queueEvents = new QueueEvents(QUEUE_NAME, { connection: redisConnection });
+
+  worker = new Worker(
+    QUEUE_NAME,
+    async (job) => processDownloadJob(job),
+    { connection: redisConnection, concurrency: Number(process.env.DOWNLOAD_WORKER_CONCURRENCY || 2) }
+  );
+
+  worker.on('completed', (job) => {
+    logger.info({ jobId: job.id }, 'Download job completed');
+  });
+
+  worker.on('failed', (job, err) => {
+    const jobId = job ? job.id : 'unknown';
+    logger.error({ jobId, err }, 'Download job failed');
+    emitJobUpdate(jobId, {
+      status: 'failed',
+      message: err.message || 'Job failed',
+      error: err.message || 'Job failed',
+      completedAt: Date.now(),
+    });
+  });
+
+  queueEvents.on('error', (err) => {
+    logger.error({ err }, 'Queue events error');
+  });
+}
+
+function cleanupOldDownloads() {
+  const cutoff = Date.now() - (DOWNLOAD_TTL_MINUTES * 60 * 1000);
+  let removed = 0;
+
+  const files = fs.readdirSync(DOWNLOADS_DIR);
+  for (const name of files) {
+    const filePath = path.join(DOWNLOADS_DIR, name);
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isFile() && stat.mtimeMs < cutoff) {
+        fs.unlinkSync(filePath);
+        removed += 1;
+      }
+    } catch {
+    }
+  }
+
+  for (const [jobId, state] of jobState.entries()) {
+    if (state.updatedAt && state.updatedAt < cutoff) {
+      jobState.delete(jobId);
+    }
+  }
+
+  if (removed > 0) {
+    logger.info({ removed }, 'Auto-cleanup removed expired downloads');
+  }
+}
+
+cron.schedule('*/10 * * * *', cleanupOldDownloads);
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'MediaDL Server is running',
+    queueEnabled: !QUEUE_DISABLED,
+    captchaRequired: CAPTCHA_REQUIRED,
+  });
 });
+
+app.get('/api/check-ytdlp', async (req, res) => {
+  try {
+    const version = await runYtDlp(['--version'], 8000);
+    const ffmpeg = isFfmpegAvailable();
+    res.json({
+      available: true,
+      version: version.trim(),
+      ffmpeg,
+      cookiesPoolSize: cookiePool.length,
+      proxyPoolSize: proxyPool.length,
+      queue: QUEUE_NAME,
+    });
+  } catch (error) {
+    res.json({ available: false, error: error.message, ffmpeg: false });
+  }
+});
+
+app.get('/api/cookie-status', (req, res) => {
+  res.json({
+    cookies_loaded: cookiePool.length > 0,
+    cookies_pool_size: cookiePool.length,
+    hint: cookiePool.length > 0
+      ? 'Cookie pool is active for rotation'
+      : 'No cookies loaded. Set YOUTUBE_COOKIES or YOUTUBE_COOKIES_POOL',
+  });
+});
+
+app.get('/api/proxy-status', (req, res) => {
+  res.json({
+    proxy_active: proxyPool.length > 0,
+    proxy_pool_size: proxyPool.length,
+    hint: proxyPool.length > 0
+      ? 'Proxy pool is active for rotation'
+      : 'No proxy pool configured. Set YOUTUBE_PROXY or YOUTUBE_PROXY_POOL',
+  });
+});
+
+app.get('/api/info', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'URL is required' });
+
+  const ffmpeg = isFfmpegAvailable();
+  const platform = detectPlatform(url);
+
+  try {
+    const raw = await runYtDlp(['--dump-json', '--no-playlist', url]);
+    const info = JSON.parse(raw);
+    const rawFormats = info.formats || [];
+
+    const seen = new Set();
+    const formats = [];
+
+    const audioStreams = rawFormats
+      .filter((f) => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none'))
+      .sort((a, b) => (b.tbr || 0) - (a.tbr || 0));
+
+    const bestAudioId = audioStreams[0] ? audioStreams[0].format_id : 'bestaudio';
+
+    const videoStreams = rawFormats
+      .filter((f) => f.vcodec && f.vcodec !== 'none' && f.height)
+      .sort((a, b) => (b.height || 0) - (a.height || 0));
+
+    for (const f of videoStreams) {
+      const height = f.height || 0;
+      const key = `${height}p_${f.ext}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const hasAudio = f.acodec && f.acodec !== 'none';
+      const fps = f.fps ? ` ${Math.round(f.fps)}fps` : '';
+      const size = f.filesize ? ` (~${formatBytes(f.filesize)})` : '';
+
+      if (hasAudio) {
+        formats.push({
+          format_id: f.format_id,
+          ext: f.ext,
+          height,
+          label: `${height}p${fps} [${f.ext}] Video+Audio${size}`,
+          needsMerge: false,
+        });
+      } else if (ffmpeg) {
+        formats.push({
+          format_id: `${f.format_id}+${bestAudioId}`,
+          ext: 'mp4',
+          height,
+          label: `${height}p${fps} [mp4] Merged HD${size}`,
+          needsMerge: true,
+        });
+      } else {
+        formats.push({
+          format_id: f.format_id,
+          ext: f.ext,
+          height,
+          label: `${height}p${fps} [${f.ext}] Video only (no audio - install ffmpeg)${size}`,
+          needsMerge: false,
+        });
+      }
+    }
+
+    const presets = [];
+    presets.push({
+      format_id: ffmpeg ? 'bestvideo+bestaudio/best' : 'best',
+      ext: 'mp4',
+      label: ffmpeg ? 'Best Quality (Auto-Merged MP4)' : 'Best Quality (MP4)',
+      note: 'Recommended',
+    });
+
+    if (ffmpeg) {
+      presets.push({
+        format_id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+        ext: 'mp4',
+        label: '1080p HD (Merged MP4)',
+        note: '',
+      });
+      presets.push({
+        format_id: 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+        ext: 'mp4',
+        label: '720p (Merged MP4)',
+        note: '',
+      });
+      presets.push({
+        format_id: 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+        ext: 'mp4',
+        label: '480p (Merged MP4)',
+        note: '',
+      });
+    }
+
+    presets.push({
+      format_id: 'bestaudio/best',
+      ext: 'mp3',
+      label: 'Audio Only (Best Quality)',
+      note: 'Audio only',
+    });
+
+    res.json({
+      title: info.title,
+      thumbnail: info.thumbnail,
+      duration: info.duration,
+      duration_string: info.duration_string || formatDuration(info.duration),
+      uploader: info.uploader || info.channel || 'Unknown',
+      view_count: info.view_count,
+      like_count: info.like_count,
+      description: info.description ? info.description.slice(0, 300) : '',
+      webpage_url: info.webpage_url || url,
+      extractor: info.extractor_key || info.extractor || 'Unknown',
+      ffmpeg,
+      formats: [...presets, ...formats.slice(0, 18)],
+    });
+  } catch (error) {
+    logger.error({ err: error, platform }, 'Failed to fetch media info');
+    res.status(500).json({
+      error: error.message || `Failed to fetch ${platform} info`,
+      platform,
+      diagnostics: {
+        cookies_pool_size: cookiePool.length,
+        proxy_pool_size: proxyPool.length,
+        ffmpeg_available: ffmpeg,
+      },
+    });
+  }
+});
+
+app.post('/api/jobs', downloadLimiter, requireCaptcha, async (req, res) => {
+  const { url, format, title } = req.body || {};
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  const formatId = format || 'bestvideo+bestaudio/best';
+  const safeTitle = (title || 'video').replace(/[^a-zA-Z0-9 _\-]/g, '_').slice(0, 80);
+
+  if (QUEUE_DISABLED || !downloadQueue) {
+    const jobId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const state = setJobState(jobId, {
+      status: 'queued',
+      progress: 0,
+      message: 'Queued for processing',
+      title: safeTitle,
+      formatId,
+      mode: 'direct',
+    });
+
+    setImmediate(async () => {
+      try {
+        await processDownloadJob({
+          id: jobId,
+          data: { url, formatId, title: safeTitle },
+          updateProgress: async () => {},
+        });
+      } catch (error) {
+        logger.error({ err: error, jobId }, 'Direct download job failed');
+        emitJobUpdate(jobId, {
+          status: 'failed',
+          message: error.message || 'Download failed',
+          error: error.message || 'Download failed',
+          completedAt: Date.now(),
+        });
+      }
+    });
+
+    return res.json({ job_id: jobId, ...state });
+  }
+
+  try {
+    const job = await downloadQueue.add(
+      'download',
+      { url, formatId, title: safeTitle },
+      {
+        attempts: Number(process.env.DOWNLOAD_JOB_ATTEMPTS || 3),
+        removeOnComplete: false,
+        removeOnFail: false,
+        backoff: { type: 'exponential', delay: 2000 },
+      }
+    );
+
+    const state = setJobState(job.id, {
+      status: 'queued',
+      progress: 0,
+      message: 'Queued for processing',
+      title: safeTitle,
+      formatId,
+    });
+
+    res.json({ job_id: job.id, ...state });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to enqueue download job');
+    res.status(500).json({ error: 'Failed to create download job' });
+  }
+});
+
+app.get('/api/jobs/:id', async (req, res) => {
+  const { id } = req.params;
+  const state = jobState.get(id);
+
+  if (!state) {
+    if (QUEUE_DISABLED || !downloadQueue) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const queueJob = await downloadQueue.getJob(id);
+    if (!queueJob) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const status = await queueJob.getState();
+    return res.json({
+      jobId: id,
+      status,
+      progress: Number(queueJob.progress || 0),
+      message: status,
+    });
+  }
+
+  return res.json(state);
+});
+
+app.get('/api/progress', (req, res) => {
+  const jobId = req.query.id;
+  if (!jobId) {
+    return res.status(400).json({ error: 'id query parameter is required' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  if (!sseClients.has(jobId)) {
+    sseClients.set(jobId, new Set());
+  }
+
+  const clients = sseClients.get(jobId);
+  clients.add(res);
+
+  const initialState = jobState.get(jobId) || {
+    jobId,
+    status: 'queued',
+    progress: 0,
+    message: 'Waiting for updates',
+  };
+
+  res.write(`data: ${JSON.stringify(initialState)}\n\n`);
+
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(': keep-alive\n\n');
+    } catch {
+    }
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    const set = sseClients.get(jobId);
+    if (set) {
+      set.delete(res);
+      if (set.size === 0) sseClients.delete(jobId);
+    }
+  });
+});
+
+app.get('/api/jobs/:id/file', (req, res) => {
+  const { id } = req.params;
+  const state = jobState.get(id);
+  if (!state) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  if (state.status !== 'completed' || !state.filePath) {
+    return res.status(409).json({ error: 'File is not ready yet' });
+  }
+
+  if (!fs.existsSync(state.filePath)) {
+    return res.status(410).json({ error: 'File expired or missing' });
+  }
+
+  const fileName = state.fileName || path.basename(state.filePath);
+  const ext = path.extname(fileName).replace('.', '');
+  res.setHeader('Content-Type', state.mimeType || getMimeType(ext));
+  return res.download(state.filePath, fileName);
+});
+
+let server = null;
+
+function startServer() {
+  initQueue();
+  server = app.listen(PORT, () => {
+    logger.info({
+      port: PORT,
+      ffmpeg: isFfmpegAvailable(),
+      cookiePoolSize: cookiePool.length,
+      proxyPoolSize: proxyPool.length,
+      queueEnabled: !QUEUE_DISABLED,
+      captchaRequired: CAPTCHA_REQUIRED,
+    }, 'MediaDL server started');
+  });
+  return server;
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  startServer,
+  detectPlatform,
+  formatDuration,
+  verifyCaptchaToken,
+};

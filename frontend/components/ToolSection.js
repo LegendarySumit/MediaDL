@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import api from "@/lib/api";
+import { useReCaptcha } from "@/components/ReCaptcha";
 
 export default function ToolSection({ toolRef }) {
   const { theme } = useTheme();
@@ -14,6 +15,83 @@ export default function ToolSection({ toolRef }) {
   const [selectedFormat, setSelectedFormat] = useState("");
   const [errorMsg, setErrorMsg] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const [activeJobId, setActiveJobId] = useState(null);
+  const [downloadHistory, setDownloadHistory] = useState([]);
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const [pendingDownloadAfterCaptcha, setPendingDownloadAfterCaptcha] = useState(false);
+  const eventSourceRef = useRef(null);
+  const turnstileContainerId = "turnstile-captcha-container";
+  const {
+    executeRecaptcha,
+    isEnabled: isCaptchaEnabled,
+    isReady: isCaptchaReady,
+    provider: captchaProvider,
+    mountTurnstile,
+    resetTurnstile,
+  } = useReCaptcha();
+
+  const HISTORY_KEY = "mediadl_download_history_v1";
+
+  const loadHistory = () => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveHistory = (entries) => {
+    setDownloadHistory(entries);
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, 20)));
+    } catch {
+    }
+  };
+
+  const upsertHistory = (patch) => {
+    setDownloadHistory((prev) => {
+      const idx = prev.findIndex((item) => item.jobId === patch.jobId);
+      const next = [...prev];
+      if (idx >= 0) {
+        next[idx] = { ...next[idx], ...patch, updatedAt: Date.now() };
+      } else {
+        next.unshift({ ...patch, updatedAt: Date.now() });
+      }
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next.slice(0, 20)));
+      } catch {
+      }
+      return next.slice(0, 20);
+    });
+  };
+
+  useEffect(() => {
+    setDownloadHistory(loadHistory());
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (captchaProvider !== "turnstile") return;
+    if (!videoInfo || !selectedFormat || downloading || captchaToken) return;
+    mountTurnstile(turnstileContainerId, (token) => setCaptchaToken(token));
+  }, [captchaProvider, videoInfo, selectedFormat, downloading, captchaToken, mountTurnstile]);
+
+  useEffect(() => {
+    if (!pendingDownloadAfterCaptcha) return;
+    if (!captchaToken || downloading) return;
+    setPendingDownloadAfterCaptcha(false);
+    proceedWithDownload(captchaToken);
+  }, [pendingDownloadAfterCaptcha, captchaToken, downloading]);
 
   // ─── Platform detection ───────────────────────────────────────────
   const PLATFORMS = [
@@ -55,6 +133,8 @@ export default function ToolSection({ toolRef }) {
     setVideoInfo(null);
     setSelectedFormat("");
     setDownloading(false);
+    setCaptchaToken(null);
+    resetTurnstile();
 
     try {
       const data = await api.getInfo(url);
@@ -70,32 +150,178 @@ export default function ToolSection({ toolRef }) {
     }
   };
 
-  // ─── Download ─────────────────────────────────────────────────────
-  const startDownload = () => {
-    if (!videoInfo || !selectedFormat) return;
-    setDownloading(true);
-    const dlUrl = api.getDownloadUrl(url, selectedFormat, videoInfo.title);
-    const a = document.createElement("a");
-    a.href = dlUrl;
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const proceedWithDownload = async (token) => {
+    if (!videoInfo || !selectedFormat || downloading) return;
+    setErrorMsg(null);
 
-    // Reset download state after a delay
-    setTimeout(() => {
+    setDownloading(true);
+    setDownloadProgress(0);
+    setDownloadStatus("Starting...");
+
+    try {
+      const job = await api.createDownloadJob(url, selectedFormat, videoInfo.title, token || captchaToken);
+      const jobId = job.job_id;
+      setActiveJobId(jobId);
+      setDownloadStatus(job.message || "Queued...");
+
+      upsertHistory({
+        jobId,
+        title: videoInfo.title || "Video",
+        url,
+        formatId: selectedFormat,
+        status: "queued",
+        progress: 0,
+        error: null,
+        createdAt: Date.now(),
+      });
+
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
+      const streamUrl = api.getProgressStreamUrl(jobId);
+      const eventSource = new EventSource(streamUrl);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          const status = payload.status || "processing";
+          const progress = Number(payload.progress || 0);
+
+          setDownloadStatus(payload.message || status);
+          setDownloadProgress(progress);
+          upsertHistory({
+            jobId,
+            status,
+            progress,
+            error: payload.error || null,
+          });
+
+          if (status === "completed") {
+            eventSource.close();
+            eventSourceRef.current = null;
+
+            const primaryUrl = api.getJobFileUrl(jobId);
+            const fallbackUrl = api.toAbsoluteUrl(payload.fallbackUrl || "");
+            api.downloadWithFallback([primaryUrl, fallbackUrl], payload.fileName || videoInfo.title || "download")
+              .catch((downloadError) => {
+                setErrorMsg(downloadError.message || "Download file is unavailable.");
+              });
+
+            setDownloading(false);
+            setDownloadStatus("Download Started!");
+            setDownloadProgress(100);
+            setCaptchaToken(null);
+            resetTurnstile();
+          }
+
+          if (status === "failed") {
+            eventSource.close();
+            eventSourceRef.current = null;
+            setDownloading(false);
+            setErrorMsg(payload.error || payload.message || "Download failed. Please try again.");
+            setCaptchaToken(null);
+            resetTurnstile();
+          }
+        } catch {
+          setDownloading(false);
+          setErrorMsg("Failed to read download progress update.");
+        }
+      };
+
+      eventSource.onerror = async () => {
+        try {
+          const latest = await api.getJobStatus(jobId);
+          if (latest.status === "completed") {
+            const primaryUrl = api.getJobFileUrl(jobId);
+            const fallbackUrl = api.toAbsoluteUrl(latest.fallbackUrl || "");
+            await api.downloadWithFallback([primaryUrl, fallbackUrl], latest.fileName || videoInfo.title || "download");
+
+            setDownloading(false);
+            setDownloadStatus("Download Started!");
+            setDownloadProgress(100);
+          } else if (latest.status === "failed") {
+            setDownloading(false);
+            setErrorMsg(latest.error || latest.message || "Download failed. Please try again.");
+            setCaptchaToken(null);
+            resetTurnstile();
+          }
+        } catch {
+          setDownloading(false);
+          setErrorMsg("Progress connection lost. Please check job status and retry.");
+        } finally {
+          eventSource.close();
+          eventSourceRef.current = null;
+        }
+      };
+    } catch (err) {
       setDownloading(false);
-    }, 4000);
+      setErrorMsg(err.message || "Failed to start download job.");
+      setDownloadStatus("");
+      setCaptchaToken(null);
+      setPendingDownloadAfterCaptcha(false);
+      resetTurnstile();
+    }
+  };
+
+  const startDownload = async () => {
+    if (!videoInfo || !selectedFormat || downloading) return;
+
+    let token = captchaToken;
+
+    if (isCaptchaEnabled) {
+      if (captchaProvider === "turnstile" && !token) {
+        setErrorMsg("Complete captcha and the download will start automatically.");
+        setPendingDownloadAfterCaptcha(true);
+        return;
+      }
+
+      if (captchaProvider === "recaptcha") {
+        if (!isCaptchaReady) {
+          setErrorMsg("Captcha is still loading. Please wait a few seconds.");
+          return;
+        }
+        token = await executeRecaptcha("start_download");
+        if (!token) {
+          setErrorMsg("Captcha verification failed. Please try again.");
+          return;
+        }
+        setCaptchaToken(token);
+      }
+    }
+
+    await proceedWithDownload(token);
+  };
+
+  const retryFromHistory = (entry) => {
+    if (!entry) return;
+    setUrl(entry.url || "");
+    if (entry.formatId) {
+      setSelectedFormat(entry.formatId);
+    }
+    setErrorMsg(null);
+    setDownloadStatus("Retrying previous request...");
   };
 
   // ─── Reset ────────────────────────────────────────────────────────
   const resetAll = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
     setUrl("");
     setVideoInfo(null);
     setSelectedFormat("");
     setErrorMsg(null);
     setLoading(false);
     setDownloading(false);
+    setDownloadProgress(0);
+    setDownloadStatus("");
+    setActiveJobId(null);
+    setCaptchaToken(null);
+    setPendingDownloadAfterCaptcha(false);
+    resetTurnstile();
   };
 
   // ─── Format helpers ───────────────────────────────────────────────
@@ -191,6 +417,7 @@ export default function ToolSection({ toolRef }) {
             {/* Label + Platform Badge */}
             <div className="flex justify-between items-center gap-2">
               <label
+                htmlFor="video-url-input"
                 className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${isDark ? "text-slate-300" : "text-slate-700"
                   }`}
               >
@@ -211,6 +438,8 @@ export default function ToolSection({ toolRef }) {
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <input
+                    id="video-url-input"
+                    name="videoUrl"
                     className={`w-full p-2.5 xs:p-3 rounded-lg border transition-all focus:outline-none text-xs xs:text-sm backdrop-blur-sm disabled:opacity-50 ${isDark
                         ? "bg-slate-800/50 text-white placeholder-slate-500"
                         : "bg-slate-50 text-slate-900 placeholder-slate-400"
@@ -236,6 +465,7 @@ export default function ToolSection({ toolRef }) {
                     }}
                     disabled={loading}
                     type="url"
+                    autoComplete="url"
                   />
                 </div>
                 <button
@@ -388,6 +618,7 @@ export default function ToolSection({ toolRef }) {
               {/* Quality & Format Selector */}
               <div className="space-y-2 mb-5">
                 <label
+                  htmlFor="format-select"
                   className={`text-xs font-semibold uppercase tracking-widest ${
                     isDark ? "text-slate-300" : "text-slate-700"
                     }`}
@@ -396,6 +627,8 @@ export default function ToolSection({ toolRef }) {
                 </label>
                 <div className="relative group">
                   <select
+                    id="format-select"
+                    name="format"
                     value={selectedFormat}
                     onChange={(e) => setSelectedFormat(e.target.value)}
                     className={`w-full px-4 py-3.5 rounded-lg border-2 appearance-none cursor-pointer transition-all text-sm font-medium pr-10 focus:outline-none ${
@@ -438,8 +671,12 @@ export default function ToolSection({ toolRef }) {
                 >
                   {downloading ? (
                     <>
-                      <i className="fas fa-check-circle text-xl"></i>
-                      <span>Download Started!</span>
+                      <i className="fas fa-spinner fa-spin text-xl"></i>
+                      <span>
+                        {downloadProgress > 0
+                          ? `${downloadStatus || "Downloading"} (${downloadProgress}%)`
+                          : downloadStatus || "Preparing Download..."}
+                      </span>
                     </>
                   ) : (
                     <>
@@ -448,6 +685,69 @@ export default function ToolSection({ toolRef }) {
                     </>
                   )}
                 </button>
+
+                {downloading && activeJobId && (
+                  <p className={`text-[11px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                    Job ID: {activeJobId}
+                  </p>
+                )}
+
+                {isCaptchaEnabled && captchaProvider === "turnstile" && videoInfo && !downloading && (
+                  <div className="mt-3 w-full flex flex-col items-center px-2">
+                    <div className="origin-center scale-75 min-[220px]:scale-90 xs:scale-100">
+                      <div id={turnstileContainerId}></div>
+                    </div>
+                    {!captchaToken ? (
+                      <p className={`mt-2 text-[11px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                        Click Download Now once, then complete captcha to auto-start.
+                      </p>
+                    ) : (
+                      <p className={`mt-2 text-[11px] text-center font-semibold flex items-center gap-1 ${isDark ? "text-green-300" : "text-green-600"}`}>
+                        <i className="fas fa-check-circle"></i> Captcha Verified
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {downloadHistory.length > 0 && (
+                  <div className={`rounded-lg border p-3 ${isDark ? "border-slate-700 bg-slate-900/40" : "border-slate-200 bg-slate-50"}`}>
+                    <p className={`text-xs font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                      Recent Downloads
+                    </p>
+                    <div className="space-y-2 max-h-44 overflow-auto">
+                      {downloadHistory.map((entry) => (
+                        <div key={entry.jobId} className={`rounded-md px-2 py-2 text-[11px] ${isDark ? "bg-slate-800/60" : "bg-white"}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`font-medium truncate ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                              {entry.title || "Untitled"}
+                            </span>
+                            <span className={`${entry.status === "failed" ? "text-red-500" : entry.status === "completed" ? "text-green-500" : "text-blue-500"}`}>
+                              {entry.status}
+                            </span>
+                          </div>
+                          <div className={`mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                            {Math.max(0, Number(entry.progress || 0))}%
+                            {entry.error ? ` - ${entry.error}` : ""}
+                          </div>
+                          {entry.status === "failed" && (
+                            <button
+                              onClick={() => retryFromHistory(entry)}
+                              className={`mt-2 text-[11px] font-semibold px-2 py-1 rounded ${isDark ? "bg-slate-700 text-slate-100" : "bg-slate-200 text-slate-800"}`}
+                            >
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => saveHistory([])}
+                      className={`mt-2 text-[11px] ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                    >
+                      Clear History
+                    </button>
+                  </div>
+                )}
 
                 {/* Download Another Button */}
                 <button

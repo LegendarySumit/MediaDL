@@ -62,8 +62,7 @@ export default function AnimatedBackground({ isDark = true }) {
           r="300"
           fill={`url(#${isDark ? "particleGradient" : "particleGradientLight"})`}
           animate={{
-            cx: [200, 250, 200],
-            cy: [150, 200, 150],
+            opacity: [0.12, 0.2, 0.12],
           }}
           transition={{
             duration: 25,
@@ -77,8 +76,7 @@ export default function AnimatedBackground({ isDark = true }) {
           r="250"
           fill={`url(#${isDark ? "particleGradient" : "particleGradientLight"})`}
           animate={{
-            cx: [800, 750, 800],
-            cy: [850, 800, 850],
+            opacity: [0.1, 0.18, 0.1],
           }}
           transition={{
             duration: 30,
@@ -120,7 +118,6 @@ export default function AnimatedBackground({ isDark = true }) {
           y2="500"
           animate={{
             opacity: [0.05, 0.15, 0.05],
-            x2: [400, 450, 400],
           }}
           transition={{
             duration: 8,
@@ -135,7 +132,6 @@ export default function AnimatedBackground({ isDark = true }) {
           y2="600"
           animate={{
             opacity: [0.05, 0.12, 0.05],
-            x2: [850, 800, 850],
           }}
           transition={{
             duration: 10,
