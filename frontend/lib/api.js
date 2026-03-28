@@ -68,10 +68,17 @@ const api = {
     apiFetch('/api/health').catch(() => ({ status: 'error' })),
 
   /** Fetch video info (title, thumbnail, formats, etc.) */
-  getInfo: (url, captchaToken) =>
-    apiFetch(`/api/info?url=${encodeURIComponent(url)}`, {
+  getInfo: async (url, captchaToken) => {
+    const data = await apiFetch(`/api/info?url=${encodeURIComponent(url)}`, {
       headers: api.withCaptchaHeaders(captchaToken),
-    }),
+    });
+
+    return {
+      ...data,
+      thumbnail: api.toAbsoluteUrl(data.thumbnail || ''),
+      thumbnail_original: api.toAbsoluteUrl(data.thumbnail_original || ''),
+    };
+  },
 
   /** Create async download job */
   createDownloadJob: (url, formatId, title, captchaToken) =>
