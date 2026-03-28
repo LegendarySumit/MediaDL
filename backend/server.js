@@ -626,7 +626,11 @@ function initQueue() {
     return;
   }
 
-  redisConnection = new IORedis(redisConfig);
+  if (process.env.REDIS_URL) {
+    redisConnection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
+  } else {
+    redisConnection = new IORedis(redisConfig);
+  }
   redisConnection.on('error', (err) => logger.error({ err }, 'Redis connection error'));
 
   downloadQueue = new Queue(QUEUE_NAME, { connection: redisConnection });
