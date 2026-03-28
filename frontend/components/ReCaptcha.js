@@ -47,7 +47,12 @@ export default function ReCaptcha({ onVerify, siteKey }) {
 export function useReCaptcha() {
   const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-  const provider = turnstileSiteKey ? 'turnstile' : (recaptchaSiteKey ? 'recaptcha' : 'none');
+  
+  // Use "none" provider if testing in E2E since testing environments can't always solve real Turnstile/reCaptcha widget overlays
+  let provider = turnstileSiteKey ? 'turnstile' : (recaptchaSiteKey ? 'recaptcha' : 'none');
+  if (process.env.NODE_ENV === "test" || process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === "true") {
+      provider = 'none';
+  }
 
   const [isReady, setIsReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState(null);

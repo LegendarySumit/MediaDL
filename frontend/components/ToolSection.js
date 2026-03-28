@@ -91,6 +91,7 @@ export default function ToolSection({ toolRef }) {
     if (!captchaToken || downloading) return;
     setPendingDownloadAfterCaptcha(false);
     proceedWithDownload(captchaToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingDownloadAfterCaptcha, captchaToken, downloading]);
 
   // ─── Platform detection ───────────────────────────────────────────
@@ -521,6 +522,7 @@ export default function ToolSection({ toolRef }) {
                 <div className="flex flex-col sm:flex-row gap-4 sm:gap-0">
                   {/* Thumbnail Container */}
                   <div className="relative sm:w-64 sm:shrink-0 flex-shrink-0 h-44 sm:h-auto">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={videoInfo.thumbnail}
                       alt={videoInfo.title}

@@ -60,4 +60,5 @@ jobs:
       - name: Run E2E
         env:
           NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ''
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ''
         run: npm run test:e2e:ci

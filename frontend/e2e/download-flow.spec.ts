@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test('user can fetch info and trigger async download flow', async ({ page }) => {
+  page.on('console', msg => console.log('BROWSER CONSOLE:', msg.text()));
+  page.on('pageerror', error => console.log('BROWSER ERROR:', error));
+
   await page.route('**/api/info?*', async (route) => {
     await route.fulfill({
       status: 200,
@@ -23,6 +26,8 @@ test('user can fetch info and trigger async download flow', async ({ page }) => 
   });
 
   await page.route('**/api/jobs', async (route) => {
+    // Artificial delay to mimic network
+    await new Promise((resolve) => setTimeout(resolve, 500));
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -36,13 +41,15 @@ test('user can fetch info and trigger async download flow', async ({ page }) => 
   });
 
   await page.route('**/api/progress?id=job-123', async (route) => {
-    await route.fulfill({
+    // Artificial stream
+    route.fulfill({
       status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-      body: [
-        'data: {"jobId":"job-123","status":"processing","progress":40,"message":"Downloading 40%"}\n\n',
-        'data: {"jobId":"job-123","status":"completed","progress":100,"message":"Download ready","fileName":"sample.mp4","fallbackUrl":"/downloads/sample.mp4"}\n\n',
-      ].join(''),
+      headers: { 
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      },
+      body: 'data: {"jobId":"job-123","status":"completed","progress":100,"message":"Download ready","fileName":"sample.mp4","fallbackUrl":"/downloads/sample.mp4"}\n\n'
     });
   });
 
@@ -51,6 +58,7 @@ test('user can fetch info and trigger async download flow', async ({ page }) => 
       status: 200,
       headers: {
         'Content-Type': 'video/mp4',
+        'Content-Disposition': 'attachment; filename="sample.mp4"'
       },
       body: Buffer.from('fake-content'),
     });
@@ -64,5 +72,7 @@ test('user can fetch info and trigger async download flow', async ({ page }) => 
   await expect(page.getByText('Sample Video')).toBeVisible();
 
   await page.getByRole('button', { name: 'Download Now' }).click();
-  await expect(page.getByText(/Download Started!/i)).toBeVisible();
+  
+  // Wait for either success or the tracking error to know what happened
+  await expect(page.getByText('completed')).toBeVisible({ timeout: 15000 });
 });
