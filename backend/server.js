@@ -19,6 +19,8 @@ const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
 const LOGS_DIR = path.join(__dirname, 'logs');
 const QUEUE_NAME = 'media-downloads';
 const DOWNLOAD_TTL_MINUTES = Number(process.env.DOWNLOAD_TTL_MINUTES || 60);
+const CAPTCHA_TRUST_TTL_MINUTES = Number(process.env.CAPTCHA_TRUST_TTL_MINUTES || 30);
+const CAPTCHA_TRUST_TTL_MS = CAPTCHA_TRUST_TTL_MINUTES * 60 * 1000;
 const QUEUE_DISABLED = process.env.DISABLE_QUEUE === 'true' || process.env.NODE_ENV === 'test';
 const IS_DEV = process.env.NODE_ENV !== 'production';
 const IS_TEST_ENV = process.env.NODE_ENV === 'test' || Boolean(process.env.JEST_WORKER_ID);
@@ -319,12 +321,31 @@ async function verifyCaptchaToken(token, remoteIp) {
 }
 
 async function requireCaptcha(req, res, next) {
+  if (!CAPTCHA_REQUIRED) {
+    return next();
+  }
+
+  const forwarded = req.headers['x-forwarded-for'];
+  const clientKey = typeof forwarded === 'string' && forwarded.trim()
+    ? forwarded.split(',')[0].trim()
+    : (req.ip || req.socket?.remoteAddress || 'unknown-client');
+
+  const trustedUntil = captchaTrustedClients.get(clientKey);
+  if (trustedUntil && trustedUntil > Date.now()) {
+    return next();
+  }
+  if (trustedUntil && trustedUntil <= Date.now()) {
+    captchaTrustedClients.delete(clientKey);
+  }
+
   const token = req.header('x-captcha-token') || req.query.captcha_token || (req.body && req.body.captcha_token);
   const remoteIp = req.ip;
   const result = await verifyCaptchaToken(token, remoteIp);
   if (!result.ok) {
     return res.status(403).json({ error: result.error });
   }
+
+  captchaTrustedClients.set(clientKey, Date.now() + CAPTCHA_TRUST_TTL_MS);
   return next();
 }
 
@@ -346,6 +367,7 @@ let worker = null;
 
 const jobState = new Map();
 const sseClients = new Map();
+const captchaTrustedClients = new Map();
 
 function setJobState(jobId, patch) {
   const current = jobState.get(jobId) || {

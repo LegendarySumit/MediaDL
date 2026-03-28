@@ -20,6 +20,7 @@ export default function ToolSection({ toolRef }) {
   const [activeJobId, setActiveJobId] = useState(null);
   const [downloadHistory, setDownloadHistory] = useState([]);
   const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaSatisfied, setCaptchaSatisfied] = useState(false);
   const [pendingDownloadAfterCaptcha, setPendingDownloadAfterCaptcha] = useState(false);
   const eventSourceRef = useRef(null);
   const turnstileContainerId = "turnstile-captcha-container";
@@ -34,6 +35,7 @@ export default function ToolSection({ toolRef }) {
   } = useReCaptcha();
 
   const HISTORY_KEY = "mediadl_download_history_v1";
+  const CAPTCHA_SESSION_KEY = "mediadl_captcha_verified_v1";
 
   const loadHistory = () => {
     try {
@@ -73,6 +75,11 @@ export default function ToolSection({ toolRef }) {
 
   useEffect(() => {
     setDownloadHistory(loadHistory());
+    try {
+      setCaptchaSatisfied(sessionStorage.getItem(CAPTCHA_SESSION_KEY) === "true");
+    } catch {
+      setCaptchaSatisfied(false);
+    }
 
     return () => {
       if (eventSourceRef.current) {
@@ -82,10 +89,18 @@ export default function ToolSection({ toolRef }) {
   }, []);
 
   useEffect(() => {
+    try {
+      sessionStorage.setItem(CAPTCHA_SESSION_KEY, captchaSatisfied ? "true" : "false");
+    } catch {
+    }
+  }, [captchaSatisfied]);
+
+  useEffect(() => {
     if (captchaProvider !== "turnstile") return;
+    if (captchaSatisfied) return;
     if (!videoInfo || !selectedFormat || downloading || captchaToken) return;
     mountTurnstile(turnstileContainerId, (token) => setCaptchaToken(token));
-  }, [captchaProvider, videoInfo, selectedFormat, downloading, captchaToken, mountTurnstile]);
+  }, [captchaProvider, captchaSatisfied, videoInfo, selectedFormat, downloading, captchaToken, mountTurnstile]);
 
   useEffect(() => {
     if (!pendingDownloadAfterCaptcha) return;
@@ -163,6 +178,7 @@ export default function ToolSection({ toolRef }) {
     try {
       const job = await api.createDownloadJob(url, selectedFormat, videoInfo.title, token || captchaToken);
       const jobId = job.job_id;
+      setCaptchaSatisfied(true);
       setActiveJobId(jobId);
       setDownloadStatus(job.message || "Queued...");
 
@@ -214,8 +230,6 @@ export default function ToolSection({ toolRef }) {
             setDownloading(false);
             setDownloadStatus("Download Started!");
             setDownloadProgress(100);
-            setCaptchaToken(null);
-            resetTurnstile();
           }
 
           if (status === "failed") {
@@ -246,8 +260,6 @@ export default function ToolSection({ toolRef }) {
           } else if (latest.status === "failed") {
             setDownloading(false);
             setErrorMsg(latest.error || latest.message || "Download failed. Please try again.");
-            setCaptchaToken(null);
-            resetTurnstile();
           }
         } catch {
           setDownloading(false);
@@ -258,12 +270,16 @@ export default function ToolSection({ toolRef }) {
         }
       };
     } catch (err) {
+      const errMessage = err.message || "Failed to start download job.";
       setDownloading(false);
-      setErrorMsg(err.message || "Failed to start download job.");
+      setErrorMsg(errMessage);
       setDownloadStatus("");
-      setCaptchaToken(null);
-      setPendingDownloadAfterCaptcha(false);
-      resetTurnstile();
+      if (/captcha|turnstile|recaptcha/i.test(errMessage)) {
+        setCaptchaSatisfied(false);
+        setCaptchaToken(null);
+        setPendingDownloadAfterCaptcha(false);
+        resetTurnstile();
+      }
     }
   };
 
@@ -272,7 +288,7 @@ export default function ToolSection({ toolRef }) {
 
     let token = captchaToken;
 
-    if (isCaptchaEnabled) {
+    if (isCaptchaEnabled && !captchaSatisfied) {
       if (captchaProvider === "turnstile" && !token) {
         if (captchaErrorCode) {
           setErrorMsg(`Captcha failed to initialize (Turnstile ${captchaErrorCode}). Check NEXT_PUBLIC_TURNSTILE_SITE_KEY domain config, or set NEXT_PUBLIC_RECAPTCHA_SITE_KEY as fallback.`);
@@ -325,9 +341,11 @@ export default function ToolSection({ toolRef }) {
     setDownloadProgress(0);
     setDownloadStatus("");
     setActiveJobId(null);
-    setCaptchaToken(null);
+    if (!captchaSatisfied) {
+      setCaptchaToken(null);
+      resetTurnstile();
+    }
     setPendingDownloadAfterCaptcha(false);
-    resetTurnstile();
   };
 
   // ─── Format helpers ───────────────────────────────────────────────
@@ -699,7 +717,7 @@ export default function ToolSection({ toolRef }) {
                   </p>
                 )}
 
-                {isCaptchaEnabled && captchaProvider === "turnstile" && videoInfo && !downloading && (
+                  {isCaptchaEnabled && !captchaSatisfied && captchaProvider === "turnstile" && videoInfo && !downloading && (
                   <div className="mt-3 w-full flex flex-col items-center px-2">
                     <div className="origin-center scale-75 min-[220px]:scale-90 xs:scale-100">
                       <div id={turnstileContainerId}></div>
