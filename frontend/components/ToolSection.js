@@ -322,16 +322,6 @@ export default function ToolSection({ toolRef }) {
     await proceedWithDownload(token);
   };
 
-  const retryFromHistory = (entry) => {
-    if (!entry) return;
-    setUrl(entry.url || "");
-    if (entry.formatId) {
-      setSelectedFormat(entry.formatId);
-    }
-    setErrorMsg(null);
-    setDownloadStatus("Retrying previous request...");
-  };
-
   // ─── Reset ────────────────────────────────────────────────────────
   const resetAll = () => {
     if (eventSourceRef.current) {
@@ -361,6 +351,13 @@ export default function ToolSection({ toolRef }) {
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
     return String(n);
   };
+
+  const currentDownloadEntry = activeJobId
+    ? downloadHistory.find((entry) => (
+      entry.jobId === activeJobId
+      && ["queued", "processing"].includes(String(entry.status || "").toLowerCase())
+    ))
+    : null;
 
   return (
     <section
@@ -740,43 +737,24 @@ export default function ToolSection({ toolRef }) {
                   </div>
                 )}
 
-                {downloadHistory.length > 0 && (
+                {currentDownloadEntry && (
                   <div className={`rounded-lg border p-3 ${isDark ? "border-slate-700 bg-slate-900/40" : "border-slate-200 bg-slate-50"}`}>
                     <p className={`text-xs font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                      Recent Downloads
+                      Current Download
                     </p>
-                    <div className="space-y-2 max-h-44 overflow-auto">
-                      {downloadHistory.map((entry) => (
-                        <div key={entry.jobId} className={`rounded-md px-2 py-2 text-[11px] ${isDark ? "bg-slate-800/60" : "bg-white"}`}>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`font-medium truncate ${isDark ? "text-slate-200" : "text-slate-700"}`}>
-                              {entry.title || "Untitled"}
-                            </span>
-                            <span className={`${entry.status === "failed" ? "text-red-500" : entry.status === "completed" ? "text-green-500" : "text-blue-500"}`}>
-                              {entry.status}
-                            </span>
-                          </div>
-                          <div className={`mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            {Math.max(0, Number(entry.progress || 0))}%
-                            {entry.error ? ` - ${entry.error}` : ""}
-                          </div>
-                          {entry.status === "failed" && (
-                            <button
-                              onClick={() => retryFromHistory(entry)}
-                              className={`mt-2 text-[11px] font-semibold px-2 py-1 rounded ${isDark ? "bg-slate-700 text-slate-100" : "bg-slate-200 text-slate-800"}`}
-                            >
-                              Retry
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                    <div className={`rounded-md px-2 py-2 text-[11px] ${isDark ? "bg-slate-800/60" : "bg-white"}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`font-medium truncate ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                          {currentDownloadEntry.title || "Untitled"}
+                        </span>
+                        <span className="text-blue-500">
+                          {currentDownloadEntry.status}
+                        </span>
+                      </div>
+                      <div className={`mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                        {Math.max(0, Number(currentDownloadEntry.progress || 0))}%
+                      </div>
                     </div>
-                    <button
-                      onClick={() => saveHistory([])}
-                      className={`mt-2 text-[11px] ${isDark ? "text-slate-400" : "text-slate-600"}`}
-                    >
-                      Clear History
-                    </button>
                   </div>
                 )}
 
