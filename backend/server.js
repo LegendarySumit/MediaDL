@@ -52,6 +52,7 @@ const logger = pino(
 app.use(pinoHttp({ logger }));
 app.use(
   helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: {
       directives: {
         'script-src': ["'self'", ...(IS_DEV ? ["'unsafe-eval'"] : [])],
@@ -967,6 +968,7 @@ app.get('/api/image-proxy', async (req, res) => {
     const buffer = Buffer.from(await upstream.arrayBuffer());
 
     res.setHeader('Content-Type', contentType);
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cache-Control', 'public, max-age=1800');
     return res.send(buffer);
   } catch (error) {
