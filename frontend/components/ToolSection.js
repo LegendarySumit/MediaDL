@@ -21,10 +21,13 @@ export default function ToolSection({ toolRef }) {
   const [downloadHistory, setDownloadHistory] = useState([]);
   const [captchaToken, setCaptchaToken] = useState(null);
   const [captchaSatisfied, setCaptchaSatisfied] = useState(false);
-  const [pendingDownloadAfterCaptcha, setPendingDownloadAfterCaptcha] = useState(false);
+  const [pendingDownloadAfterCaptcha, setPendingDownloadAfterCaptcha] =
+    useState(false);
+  const [fetchTakingTooLong, setFetchTakingTooLong] = useState(false);
   const eventSourceRef = useRef(null);
   const statusPollerRef = useRef(null);
   const completionHandledRef = useRef(false);
+  const fetchTimeoutRef = useRef(null);
   const turnstileContainerId = "turnstile-captcha-container";
   const {
     executeRecaptcha,
@@ -54,8 +57,7 @@ export default function ToolSection({ toolRef }) {
     setDownloadHistory(entries);
     try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, 20)));
-    } catch {
-    }
+    } catch {}
   };
 
   const upsertHistory = (patch) => {
@@ -69,8 +71,7 @@ export default function ToolSection({ toolRef }) {
       }
       try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(next.slice(0, 20)));
-      } catch {
-      }
+      } catch {}
       return next.slice(0, 20);
     });
   };
@@ -78,7 +79,9 @@ export default function ToolSection({ toolRef }) {
   useEffect(() => {
     setDownloadHistory(loadHistory());
     try {
-      setCaptchaSatisfied(sessionStorage.getItem(CAPTCHA_SESSION_KEY) === "true");
+      setCaptchaSatisfied(
+        sessionStorage.getItem(CAPTCHA_SESSION_KEY) === "true",
+      );
     } catch {
       setCaptchaSatisfied(false);
     }
@@ -101,15 +104,21 @@ export default function ToolSection({ toolRef }) {
     }
   };
 
+  const closeEventSource = () => {
+    if (eventSourceRef.current) {
+      // Remove all listeners before closing
+      eventSourceRef.current.onmessage = null;
+      eventSourceRef.current.onerror = null;
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  };
+
   const handleJobCompleted = async (jobId, payload, titleFallback) => {
     if (completionHandledRef.current) return;
     completionHandledRef.current = true;
     stopStatusPoller();
-
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+    closeEventSource();
 
     const primaryUrl = api.getJobFileUrl(jobId);
     const fallbackUrl = api.toAbsoluteUrl(payload?.fallbackUrl || "");
@@ -117,7 +126,10 @@ export default function ToolSection({ toolRef }) {
     setDownloadProgress(100);
 
     try {
-      await api.downloadWithFallback([primaryUrl, fallbackUrl], payload?.fileName || titleFallback || "download");
+      await api.downloadWithFallback(
+        [primaryUrl, fallbackUrl],
+        payload?.fileName || titleFallback || "download",
+      );
       setDownloadStatus("Download Started!");
     } catch (downloadError) {
       setErrorMsg(downloadError.message || "Download file is unavailable.");
@@ -133,8 +145,13 @@ export default function ToolSection({ toolRef }) {
       eventSourceRef.current = null;
     }
     setDownloading(false);
-    setErrorMsg(payload?.error || payload?.message || "Download failed. Please try again.");
+    setErrorMsg(
+      payload?.error ||
+        payload?.message ||
+        "Download failed. Please try again.",
+    );
     setCaptchaToken(null);
+    closeEventSource();
     resetTurnstile();
   };
 
@@ -190,9 +207,11 @@ export default function ToolSection({ toolRef }) {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(CAPTCHA_SESSION_KEY, captchaSatisfied ? "true" : "false");
-    } catch {
-    }
+      sessionStorage.setItem(
+        CAPTCHA_SESSION_KEY,
+        captchaSatisfied ? "true" : "false",
+      );
+    } catch {}
   }, [captchaSatisfied]);
 
   useEffect(() => {
@@ -200,7 +219,15 @@ export default function ToolSection({ toolRef }) {
     if (captchaSatisfied) return;
     if (!videoInfo || !selectedFormat || downloading || captchaToken) return;
     mountTurnstile(turnstileContainerId, (token) => setCaptchaToken(token));
-  }, [captchaProvider, captchaSatisfied, videoInfo, selectedFormat, downloading, captchaToken, mountTurnstile]);
+  }, [
+    captchaProvider,
+    captchaSatisfied,
+    videoInfo,
+    selectedFormat,
+    downloading,
+    captchaToken,
+    mountTurnstile,
+  ]);
 
   useEffect(() => {
     if (!pendingDownloadAfterCaptcha) return;
@@ -212,15 +239,40 @@ export default function ToolSection({ toolRef }) {
 
   // ─── Platform detection ───────────────────────────────────────────
   const PLATFORMS = [
-    { name: "YouTube", pattern: /youtube\.com|youtu\.be/i, color: "#FF0000", emoji: "🔴" },
-    { name: "Instagram", pattern: /instagram\.com/i, color: "#E1306C", emoji: "📸" },
-    { name: "Facebook", pattern: /facebook\.com|fb\.watch/i, color: "#1877F2", emoji: "🔵" },
+    {
+      name: "YouTube",
+      pattern: /youtube\.com|youtu\.be/i,
+      color: "#FF0000",
+      emoji: "🔴",
+    },
+    {
+      name: "Instagram",
+      pattern: /instagram\.com/i,
+      color: "#E1306C",
+      emoji: "📸",
+    },
+    {
+      name: "Facebook",
+      pattern: /facebook\.com|fb\.watch/i,
+      color: "#1877F2",
+      emoji: "🔵",
+    },
     { name: "TikTok", pattern: /tiktok\.com/i, color: "#fff", emoji: "🎵" },
-    { name: "Twitter/X", pattern: /twitter\.com|x\.com/i, color: "#fff", emoji: "🐦" },
+    {
+      name: "Twitter/X",
+      pattern: /twitter\.com|x\.com/i,
+      color: "#fff",
+      emoji: "🐦",
+    },
     { name: "Vimeo", pattern: /vimeo\.com/i, color: "#1AB7EA", emoji: "🎬" },
     { name: "Reddit", pattern: /reddit\.com/i, color: "#FF4500", emoji: "🟠" },
     { name: "Twitch", pattern: /twitch\.tv/i, color: "#9146FF", emoji: "💜" },
-    { name: "SoundCloud", pattern: /soundcloud\.com/i, color: "#FF5500", emoji: "🔶" },
+    {
+      name: "SoundCloud",
+      pattern: /soundcloud\.com/i,
+      color: "#FF5500",
+      emoji: "🔶",
+    },
   ];
 
   const detectPlatform = (urlStr) => {
@@ -242,10 +294,103 @@ export default function ToolSection({ toolRef }) {
   const detectedPlatform = url ? detectPlatform(url) : null;
   const isUrlValid = url && isValidUrl(url);
 
+  // ─── Use default presets (skip fetching full info) ─────────────────────
+  const useDefaultPresets = () => {
+    if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+    setFetchTakingTooLong(false);
+    setLoading(false);
+    setErrorMsg(null);
+
+    // Extract a clean title from URL
+    let cleanTitle = "Media";
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname.split("/").filter(Boolean).pop();
+      if (pathname && pathname.length > 3 && !pathname.includes("=")) {
+        cleanTitle = decodeURIComponent(pathname).replace(/[-_]/g, " ");
+      } else if (urlObj.hostname) {
+        cleanTitle = urlObj.hostname.replace("www.", "").split(".")[0];
+        cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+      }
+    } catch {}
+
+    // Create minimal video info with just presets
+    const ffmpeg = true; // Assume ffmpeg is available
+    const presets = [
+      {
+        format_id: "bestvideo+bestaudio/best",
+        ext: "mp4",
+        label: "Best Quality (Auto-Merged MP4)",
+        note: "Recommended",
+      },
+      {
+        format_id: "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+        ext: "mp4",
+        label: "1080p HD (Merged MP4)",
+        note: "",
+      },
+      {
+        format_id: "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        ext: "mp4",
+        label: "720p (Merged MP4)",
+        note: "",
+      },
+      {
+        format_id: "bestvideo[height<=480]+bestaudio/best[height<=480]",
+        ext: "mp4",
+        label: "480p (Merged MP4)",
+        note: "",
+      },
+      {
+        format_id: "bestaudio/best",
+        ext: "mp3",
+        label: "Audio Only (Best Quality)",
+        note: "Audio only",
+      },
+    ];
+
+    setVideoInfo({
+      title: cleanTitle,
+      thumbnail: null,
+      thumbnail_original: null,
+      duration: null,
+      duration_string: null,
+      uploader: null,
+      view_count: null,
+      like_count: null,
+      description: null,
+      webpage_url: url,
+      extractor: detectedPlatform?.name || "unknown",
+      ffmpeg,
+      formats: presets,
+    });
+    setSelectedFormat("bestvideo+bestaudio/best");
+
+    // Still try to fetch metadata in background for better quality detection
+    (async () => {
+      try {
+        const data = await api.getInfo(url, captchaToken);
+        if (data && data.formats) {
+          setVideoInfo((prev) => ({
+            ...prev,
+            ...data,
+            formats: [
+              ...presets.filter((p) => p.note === "Recommended"),
+              ...data.formats.slice(0, 18),
+            ],
+          }));
+        }
+      } catch {
+        // Silent fail - presets already loaded
+      }
+    })();
+  };
+
   // ─── Fetch video info ─────────────────────────────────────────────
   const fetchInfo = async () => {
     if (!url || !isUrlValid) return;
     setLoading(true);
+    setFetchTakingTooLong(false);
     setErrorMsg(null);
     setVideoInfo(null);
     setSelectedFormat("");
@@ -253,15 +398,28 @@ export default function ToolSection({ toolRef }) {
     setCaptchaToken(null);
     resetTurnstile();
 
+    // Show "taking too long" message after 8 seconds
+    fetchTimeoutRef.current = setTimeout(() => {
+      setFetchTakingTooLong(true);
+    }, 8000);
+
     try {
       const data = await api.getInfo(url, captchaToken);
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      setFetchTakingTooLong(false);
       setVideoInfo(data);
       // Auto-select recommended format
       const recommended = data.formats?.find((f) => f.note === "Recommended");
       if (recommended) setSelectedFormat(recommended.format_id);
-      else if (data.formats?.length) setSelectedFormat(data.formats[0].format_id);
+      else if (data.formats?.length)
+        setSelectedFormat(data.formats[0].format_id);
     } catch (err) {
-      setErrorMsg(err.message || "Failed to fetch video info. Check the URL and try again.");
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      setFetchTakingTooLong(false);
+      setErrorMsg(
+        err.message ||
+          "Failed to fetch video info. Check the URL and try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -277,7 +435,12 @@ export default function ToolSection({ toolRef }) {
 
     try {
       completionHandledRef.current = false;
-      const job = await api.createDownloadJob(url, selectedFormat, videoInfo.title, token || captchaToken);
+      const job = await api.createDownloadJob(
+        url,
+        selectedFormat,
+        videoInfo.title,
+        token || captchaToken,
+      );
       const jobId = job.job_id;
       setCaptchaSatisfied(true);
       setActiveJobId(jobId);
@@ -295,15 +458,14 @@ export default function ToolSection({ toolRef }) {
         createdAt: Date.now(),
       });
 
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
+      // Close any existing EventSource before creating a new one
+      closeEventSource();
 
       const streamUrl = api.getProgressStreamUrl(jobId);
       const eventSource = new EventSource(streamUrl);
       eventSourceRef.current = eventSource;
 
-      eventSource.onmessage = (event) => {
+      const handleMessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
           const status = payload.status || "processing";
@@ -332,7 +494,7 @@ export default function ToolSection({ toolRef }) {
         }
       };
 
-      eventSource.onerror = async () => {
+      const handleError = async () => {
         try {
           const latest = await api.getJobStatus(jobId);
           if (latest.status === "completed") {
@@ -344,12 +506,15 @@ export default function ToolSection({ toolRef }) {
           // Keep poller alive as fallback even if SSE channel is interrupted.
           setDownloadStatus("Connection interrupted, checking status...");
         } finally {
-          eventSource.close();
-          eventSourceRef.current = null;
+          closeEventSource();
         }
       };
+
+      eventSource.onmessage = handleMessage;
+      eventSource.onerror = handleError;
     } catch (err) {
       stopStatusPoller();
+      closeEventSource();
       const errMessage = err.message || "Failed to start download job.";
       setDownloading(false);
       setErrorMsg(errMessage);
@@ -371,10 +536,14 @@ export default function ToolSection({ toolRef }) {
     if (isCaptchaEnabled && !captchaSatisfied) {
       if (captchaProvider === "turnstile" && !token) {
         if (captchaErrorCode) {
-          setErrorMsg(`Captcha failed to initialize (Turnstile ${captchaErrorCode}). Check NEXT_PUBLIC_TURNSTILE_SITE_KEY domain config, or set NEXT_PUBLIC_RECAPTCHA_SITE_KEY as fallback.`);
+          setErrorMsg(
+            `Captcha failed to initialize (Turnstile ${captchaErrorCode}). Check NEXT_PUBLIC_TURNSTILE_SITE_KEY domain config, or set NEXT_PUBLIC_RECAPTCHA_SITE_KEY as fallback.`,
+          );
           return;
         }
-        setErrorMsg("Complete captcha and the download will start automatically.");
+        setErrorMsg(
+          "Complete captcha and the download will start automatically.",
+        );
         setPendingDownloadAfterCaptcha(true);
         return;
       }
@@ -399,11 +568,8 @@ export default function ToolSection({ toolRef }) {
   // ─── Reset ────────────────────────────────────────────────────────
   const resetAll = () => {
     stopStatusPoller();
+    closeEventSource();
     completionHandledRef.current = false;
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
     setUrl("");
     setVideoInfo(null);
     setSelectedFormat("");
@@ -429,45 +595,53 @@ export default function ToolSection({ toolRef }) {
   };
 
   const currentDownloadEntry = activeJobId
-    ? downloadHistory.find((entry) => (
-      entry.jobId === activeJobId
-      && ["queued", "processing"].includes(String(entry.status || "").toLowerCase())
-    ))
+    ? downloadHistory.find(
+        (entry) =>
+          entry.jobId === activeJobId &&
+          ["queued", "processing"].includes(
+            String(entry.status || "").toLowerCase(),
+          ),
+      )
     : null;
 
   return (
     <section
       id="tool-section"
       ref={toolRef}
-      className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${isDark
+      className={`py-12 xs:py-16 sm:py-20 md:py-32 px-3 xs:px-4 sm:px-6 transition-colors duration-300 ${
+        isDark
           ? "bg-linear-to-b from-slate-950 to-slate-900"
           : "bg-linear-to-b from-slate-50 to-white"
-        }`}
+      }`}
     >
       <div className="max-w-3xl mx-auto">
         {/* Section Header */}
         <div className="text-center mb-8 xs:mb-12">
           {/* Badge */}
           <div className="flex justify-center mb-4">
-            <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest border ${
-              isDark
-                ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                : "bg-blue-50 border-blue-300/60 text-blue-700"
-            }`}>
+            <span
+              className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest border ${
+                isDark
+                  ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                  : "bg-blue-50 border-blue-300/60 text-blue-700"
+              }`}
+            >
               <i className="fas fa-download"></i> Get Started
             </span>
           </div>
           <h2
-            className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${isDark
+            className={`text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-black mb-3 xs:mb-4 px-2 ${
+              isDark
                 ? "bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
                 : "bg-linear-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent"
-              }`}
+            }`}
           >
             Download Any Video
           </h2>
           <p
-            className={`text-sm xs:text-base sm:text-lg px-2 ${isDark ? "text-slate-400" : "text-slate-600"
-              }`}
+            className={`text-sm xs:text-base sm:text-lg px-2 ${
+              isDark ? "text-slate-400" : "text-slate-600"
+            }`}
           >
             Paste a link, fetch video info, pick your quality, and download.
           </p>
@@ -475,39 +649,44 @@ export default function ToolSection({ toolRef }) {
 
         {/* Downloader Card */}
         <div
-          className={`rounded-xl xs:rounded-2xl p-4 xs:p-6 sm:p-8 shadow-2xl border transition-colors duration-300 ${isDark
+          className={`rounded-xl xs:rounded-2xl p-4 xs:p-6 sm:p-8 shadow-2xl border transition-colors duration-300 ${
+            isDark
               ? "bg-linear-to-br from-slate-900/80 via-slate-800/40 to-slate-900/80 text-white border-slate-700/50 backdrop-blur-sm"
               : "bg-white/70 text-slate-900 border-slate-200 shadow-xl backdrop-blur-sm"
-            }`}
+          }`}
         >
           {/* Error Message */}
           {errorMsg && (
             <div
-              className={`mb-4 xs:mb-5 p-3 xs:p-4 border rounded-lg backdrop-blur-sm animate-fadeIn ${isDark
+              className={`mb-4 xs:mb-5 p-3 xs:p-4 border rounded-lg backdrop-blur-sm animate-fadeIn ${
+                isDark
                   ? "bg-red-950/50 border-red-700/50"
                   : "bg-red-50 border-red-300"
-                }`}
+              }`}
             >
               <div className="flex gap-2 xs:gap-3">
                 <span className="text-xl xs:text-2xl">⚠️</span>
                 <div className="flex-1">
                   <p
-                    className={`text-xs xs:text-sm font-semibold mb-1 ${isDark ? "text-red-300" : "text-red-700"
-                      }`}
+                    className={`text-xs xs:text-sm font-semibold mb-1 ${
+                      isDark ? "text-red-300" : "text-red-700"
+                    }`}
                   >
                     Something went wrong
                   </p>
                   <p
-                    className={`text-[10px] xs:text-xs ${isDark ? "text-red-200/80" : "text-red-600"
-                      }`}
+                    className={`text-[10px] xs:text-xs ${
+                      isDark ? "text-red-200/80" : "text-red-600"
+                    }`}
                   >
                     {errorMsg}
                   </p>
                 </div>
                 <button
                   onClick={() => setErrorMsg(null)}
-                  className={`text-xs self-start opacity-60 hover:opacity-100 transition ${isDark ? "text-red-300" : "text-red-500"
-                    }`}
+                  className={`text-xs self-start opacity-60 hover:opacity-100 transition ${
+                    isDark ? "text-red-300" : "text-red-500"
+                  }`}
                 >
                   ✕
                 </button>
@@ -521,15 +700,18 @@ export default function ToolSection({ toolRef }) {
             <div className="flex justify-between items-center gap-2">
               <label
                 htmlFor="video-url-input"
-                className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${isDark ? "text-slate-300" : "text-slate-700"
-                  }`}
+                className={`text-[10px] xs:text-xs font-semibold uppercase tracking-wider ${
+                  isDark ? "text-slate-300" : "text-slate-700"
+                }`}
               >
                 Paste Video URL
               </label>
               {detectedPlatform && (
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] xs:text-xs font-semibold whitespace-nowrap ${isDark
-                    ? "bg-linear-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/40 text-blue-300"
-                    : "bg-linear-to-r from-blue-50 to-purple-50 border border-blue-300/60 text-blue-700"
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] xs:text-xs font-semibold whitespace-nowrap ${
+                    isDark
+                      ? "bg-linear-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/40 text-blue-300"
+                      : "bg-linear-to-r from-blue-50 to-purple-50 border border-blue-300/60 text-blue-700"
                   }`}
                 >
                   {detectedPlatform.emoji} {detectedPlatform.name}
@@ -543,17 +725,19 @@ export default function ToolSection({ toolRef }) {
                   <input
                     id="video-url-input"
                     name="videoUrl"
-                    className={`w-full p-2.5 xs:p-3 rounded-lg border transition-all focus:outline-none text-xs xs:text-sm backdrop-blur-sm disabled:opacity-50 ${isDark
+                    className={`w-full p-2.5 xs:p-3 rounded-lg border transition-all focus:outline-none text-xs xs:text-sm backdrop-blur-sm disabled:opacity-50 ${
+                      isDark
                         ? "bg-slate-800/50 text-white placeholder-slate-500"
                         : "bg-slate-50 text-slate-900 placeholder-slate-400"
-                      } ${isUrlValid
+                    } ${
+                      isUrlValid
                         ? "border-green-500/50 focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
                         : url
                           ? "border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
                           : isDark
                             ? "border-slate-600/50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                             : "border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                      }`}
+                    }`}
                     placeholder="https://youtube.com/watch?v=..."
                     value={url}
                     onChange={(e) => {
@@ -572,40 +756,41 @@ export default function ToolSection({ toolRef }) {
                   />
                 </div>
                 <button
-                disabled={loading || !isUrlValid}
-                onClick={fetchInfo}
-                className={`px-4 xs:px-5 rounded-lg font-bold transition-all text-xs xs:text-sm flex items-center gap-1.5 shrink-0 ${loading || !isUrlValid
-                    ? isDark
-                      ? "bg-slate-700/30 cursor-not-allowed text-slate-500"
-                      : "bg-slate-200/50 cursor-not-allowed text-slate-400"
-                    : "bg-linear-to-r from-blue-600 to-purple-600 text-white hover:opacity-90 active:scale-95"
+                  disabled={loading || !isUrlValid}
+                  onClick={fetchInfo}
+                  className={`px-4 xs:px-5 rounded-lg font-bold transition-all text-xs xs:text-sm flex items-center gap-1.5 shrink-0 ${
+                    loading || !isUrlValid
+                      ? isDark
+                        ? "bg-slate-700/30 cursor-not-allowed text-slate-500"
+                        : "bg-slate-200/50 cursor-not-allowed text-slate-400"
+                      : "bg-linear-to-r from-blue-600 to-purple-600 text-white hover:opacity-90 active:scale-95"
                   }`}
-              >
-                {loading ? (
-                  <svg
-                    className="animate-spin h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                ) : (
-                  <i className="fas fa-search"></i>
-                )}
-                <span>{loading ? "Fetching…" : "Fetch"}</span>
-              </button>
+                >
+                  {loading ? (
+                    <svg
+                      className="animate-spin h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  ) : (
+                    <i className="fas fa-search"></i>
+                  )}
+                  <span>{loading ? "Fetching…" : "Fetch"}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -619,24 +804,51 @@ export default function ToolSection({ toolRef }) {
                   isDark
                     ? "bg-linear-to-br from-slate-800/60 to-slate-900/60 border-slate-700/40 hover:border-purple-500/40"
                     : "bg-linear-to-br from-slate-50/80 to-white/80 border-slate-200 hover:border-slate-300"
-                  }`}
+                }`}
               >
                 <div className="flex flex-col sm:flex-row gap-4 sm:gap-0">
                   {/* Thumbnail Container */}
                   <div className="relative sm:w-64 sm:shrink-0 shrink-0 h-44 sm:h-auto">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={videoInfo.thumbnail}
-                      alt={videoInfo.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.src =
-                          "data:image/svg+xml;base64," +
-                          btoa(
-                            '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225" viewBox="0 0 400 225"><rect width="400" height="225" fill="#0d1020"/><circle cx="200" cy="112" r="32" fill="rgba(124,92,252,0.18)" stroke="rgba(124,92,252,0.45)" stroke-width="1.5"/><polygon points="192,97 192,127 220,112" fill="rgba(124,92,252,0.65)"/></svg>'
-                          );
-                      }}
-                    />
+                    {videoInfo?.thumbnail ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={videoInfo.thumbnail}
+                          alt={videoInfo.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.src =
+                              "data:image/svg+xml;base64," +
+                              btoa(
+                                '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225" viewBox="0 0 400 225"><rect width="400" height="225" fill="#0d1020"/><circle cx="200" cy="112" r="32" fill="rgba(124,92,252,0.18)" stroke="rgba(124,92,252,0.45)" stroke-width="1.5"/><polygon points="192,97 192,127 220,112" fill="rgba(124,92,252,0.65)"/></svg>',
+                              );
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="400"
+                        height="225"
+                        viewBox="0 0 400 225"
+                        className="w-full h-full"
+                      >
+                        <rect width="400" height="225" fill="#0d1020" />
+                        <circle
+                          cx="200"
+                          cy="112"
+                          r="32"
+                          fill="rgba(124,92,252,0.18)"
+                          stroke="rgba(124,92,252,0.45)"
+                          strokeWidth="1.5"
+                        />
+                        <polygon
+                          points="192,97 192,127 220,112"
+                          fill="rgba(124,92,252,0.65)"
+                        />
+                      </svg>
+                    )}
+
                     {/* Duration Badge */}
                     {videoInfo.duration_string && (
                       <span
@@ -644,7 +856,7 @@ export default function ToolSection({ toolRef }) {
                           isDark
                             ? "bg-black/70 text-white"
                             : "bg-black/60 text-white"
-                          }`}
+                        }`}
                       >
                         {videoInfo.duration_string}
                       </span>
@@ -662,7 +874,7 @@ export default function ToolSection({ toolRef }) {
                               isDark
                                 ? "bg-blue-500/20 border border-blue-500/40 text-blue-300"
                                 : "bg-blue-50 border border-blue-300/60 text-blue-700"
-                              }`}
+                            }`}
                           >
                             {detectedPlatform.emoji} {detectedPlatform.name}
                           </span>
@@ -673,19 +885,22 @@ export default function ToolSection({ toolRef }) {
                       <h3
                         className={`text-base xs:text-lg sm:text-xl font-bold leading-snug mb-3 line-clamp-3 ${
                           isDark ? "text-white" : "text-slate-900"
-                          }`}
+                        }`}
                       >
                         {videoInfo.title || "Untitled Video"}
                       </h3>
 
                       {/* Uploader */}
-                      {videoInfo.uploader && (
+                      {videoInfo?.uploader && (
                         <p
                           className={`text-sm mb-3 ${
                             isDark ? "text-slate-400" : "text-slate-600"
-                            }`}
+                          }`}
                         >
-                          By <span className="font-semibold">{videoInfo.uploader}</span>
+                          By{" "}
+                          <span className="font-semibold">
+                            {videoInfo.uploader}
+                          </span>
                         </p>
                       )}
                     </div>
@@ -693,16 +908,18 @@ export default function ToolSection({ toolRef }) {
                     {/* Stats */}
                     <div
                       className={`grid grid-cols-2 xs:grid-cols-3 gap-3 pt-3 border-t ${
-                        isDark ? "border-slate-700/50 text-slate-300" : "border-slate-200 text-slate-600"
-                        }`}
+                        isDark
+                          ? "border-slate-700/50 text-slate-300"
+                          : "border-slate-200 text-slate-600"
+                      }`}
                     >
-                      {videoInfo.view_count > 0 && (
+                      {videoInfo?.view_count > 0 && (
                         <div className="flex items-center gap-2 text-xs xs:text-sm">
                           <i className="fas fa-eye text-blue-400"></i>
                           <span>{fmtNum(videoInfo.view_count)}</span>
                         </div>
                       )}
-                      {videoInfo.like_count > 0 && (
+                      {videoInfo?.like_count > 0 && (
                         <div className="flex items-center gap-2 text-xs xs:text-sm">
                           <i className="fas fa-heart text-pink-400"></i>
                           <span>{fmtNum(videoInfo.like_count)}</span>
@@ -725,7 +942,7 @@ export default function ToolSection({ toolRef }) {
                   htmlFor="format-select"
                   className={`text-xs font-semibold uppercase tracking-widest ${
                     isDark ? "text-slate-300" : "text-slate-700"
-                    }`}
+                  }`}
                 >
                   <i className="fas fa-cog mr-1.5"></i>Quality & Format
                 </label>
@@ -739,7 +956,7 @@ export default function ToolSection({ toolRef }) {
                       isDark
                         ? "bg-slate-800/60 text-white border-slate-600/50 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 hover:border-slate-500"
                         : "bg-slate-100/60 text-slate-900 border-slate-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 hover:border-slate-400"
-                      }`}
+                    }`}
                   >
                     {(videoInfo.formats || []).map((f) => (
                       <option key={f.format_id} value={f.format_id}>
@@ -750,7 +967,7 @@ export default function ToolSection({ toolRef }) {
                   <div
                     className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-lg ${
                       isDark ? "text-slate-400" : "text-slate-600"
-                      }`}
+                    }`}
                   >
                     <i className="fas fa-chevron-down"></i>
                   </div>
@@ -771,7 +988,7 @@ export default function ToolSection({ toolRef }) {
                           ? "bg-slate-700/40 cursor-not-allowed text-slate-500"
                           : "bg-slate-200/60 cursor-not-allowed text-slate-400"
                         : "bg-linear-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:opacity-90 active:scale-95"
-                    }`}
+                  }`}
                 >
                   {downloading ? (
                     <>
@@ -791,44 +1008,70 @@ export default function ToolSection({ toolRef }) {
                 </button>
 
                 {downloading && activeJobId && (
-                  <p className={`text-[11px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  <p
+                    className={`text-[11px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                  >
                     Job ID: {activeJobId}
                   </p>
                 )}
 
-                  {isCaptchaEnabled && !captchaSatisfied && captchaProvider === "turnstile" && videoInfo && !downloading && (
-                  <div className="mt-3 w-full flex flex-col items-center px-2">
-                    <div className="origin-center scale-75 min-[220px]:scale-90 xs:scale-100">
-                      <div id={turnstileContainerId}></div>
+                {isCaptchaEnabled &&
+                  !captchaSatisfied &&
+                  captchaProvider === "turnstile" &&
+                  videoInfo &&
+                  !downloading && (
+                    <div className="mt-3 w-full flex flex-col items-center px-2">
+                      <div className="origin-center scale-75 min-[220px]:scale-90 xs:scale-100">
+                        <div id={turnstileContainerId}></div>
+                      </div>
+                      {!captchaToken ? (
+                        <p
+                          className={`mt-2 text-[11px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                        >
+                          Click Download Now once, then complete captcha to
+                          auto-start.
+                        </p>
+                      ) : (
+                        <p
+                          className={`mt-2 text-[11px] text-center font-semibold flex items-center gap-1 ${isDark ? "text-green-300" : "text-green-600"}`}
+                        >
+                          <i className="fas fa-check-circle"></i> Captcha
+                          Verified
+                        </p>
+                      )}
                     </div>
-                    {!captchaToken ? (
-                      <p className={`mt-2 text-[11px] text-center ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-                        Click Download Now once, then complete captcha to auto-start.
-                      </p>
-                    ) : (
-                      <p className={`mt-2 text-[11px] text-center font-semibold flex items-center gap-1 ${isDark ? "text-green-300" : "text-green-600"}`}>
-                        <i className="fas fa-check-circle"></i> Captcha Verified
-                      </p>
-                    )}
-                  </div>
-                )}
+                  )}
 
                 {currentDownloadEntry && (
-                  <div className={`rounded-lg border p-3 ${isDark ? "border-slate-700 bg-slate-900/40" : "border-slate-200 bg-slate-50"}`}>
-                    <p className={`text-xs font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                  <div
+                    className={`rounded-lg border p-3 ${isDark ? "border-slate-700 bg-slate-900/40" : "border-slate-200 bg-slate-50"}`}
+                  >
+                    <p
+                      className={`text-xs font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}
+                    >
                       Current Download
                     </p>
-                    <div className={`rounded-md px-2 py-2 text-[11px] ${isDark ? "bg-slate-800/60" : "bg-white"}`}>
+                    <div
+                      className={`rounded-md px-2 py-2 text-[11px] ${isDark ? "bg-slate-800/60" : "bg-white"}`}
+                    >
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`font-medium truncate ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                        <span
+                          className={`font-medium truncate ${isDark ? "text-slate-200" : "text-slate-700"}`}
+                        >
                           {currentDownloadEntry.title || "Untitled"}
                         </span>
                         <span className="text-blue-500">
                           {currentDownloadEntry.status}
                         </span>
                       </div>
-                      <div className={`mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                        {Math.max(0, Number(currentDownloadEntry.progress || 0))}%
+                      <div
+                        className={`mt-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                      >
+                        {Math.max(
+                          0,
+                          Number(currentDownloadEntry.progress || 0),
+                        )}
+                        %
                       </div>
                     </div>
                   </div>
@@ -841,7 +1084,7 @@ export default function ToolSection({ toolRef }) {
                     isDark
                       ? "bg-slate-800/50 text-slate-200"
                       : "bg-slate-200/60 text-slate-700"
-                    }`}
+                  }`}
                 >
                   <i className="fas fa-plus"></i>
                   <span>Download Another Video</span>
@@ -873,35 +1116,51 @@ export default function ToolSection({ toolRef }) {
                 />
               </svg>
               <p
-                className={`text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"
-                  }`}
+                className={`text-sm font-medium ${
+                  isDark ? "text-slate-300" : "text-slate-600"
+                }`}
               >
                 Fetching video info…
               </p>
               <p
-                className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"
-                  }`}
+                className={`text-xs ${
+                  isDark ? "text-slate-500" : "text-slate-400"
+                }`}
               >
-                This may take a few seconds
+                {fetchTakingTooLong
+                  ? "Taking longer than expected..."
+                  : "This may take a few seconds"}
               </p>
+              {fetchTakingTooLong && (
+                <button
+                  onClick={useDefaultPresets}
+                  className="mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs xs:text-sm font-semibold rounded-lg transition-all active:scale-95"
+                >
+                  <i className="fas fa-bolt mr-1.5"></i>
+                  Use Default Presets
+                </button>
+              )}
             </div>
           )}
 
           {/* Footer hints — show only when no video info */}
           {!videoInfo && !loading && (
             <div
-              className={`border-t pt-3 xs:pt-4 mt-4 xs:mt-6 ${isDark ? "border-slate-700/50" : "border-slate-200"
-                }`}
+              className={`border-t pt-3 xs:pt-4 mt-4 xs:mt-6 ${
+                isDark ? "border-slate-700/50" : "border-slate-200"
+              }`}
             >
               <div
-                className={`grid grid-cols-3 gap-2 xs:gap-3 text-center text-[10px] xs:text-xs mb-2 xs:mb-3 ${isDark ? "text-slate-400" : "text-slate-600"
-                  }`}
+                className={`grid grid-cols-3 gap-2 xs:gap-3 text-center text-[10px] xs:text-xs mb-2 xs:mb-3 ${
+                  isDark ? "text-slate-400" : "text-slate-600"
+                }`}
               >
                 <div className="flex flex-col items-center gap-0.5 xs:gap-1">
                   <i className="fas fa-bolt text-base xs:text-lg text-blue-400"></i>
                   <span
-                    className={`font-semibold ${isDark ? "text-slate-300" : "text-slate-700"
-                      }`}
+                    className={`font-semibold ${
+                      isDark ? "text-slate-300" : "text-slate-700"
+                    }`}
                   >
                     Fast
                   </span>
@@ -909,8 +1168,9 @@ export default function ToolSection({ toolRef }) {
                 <div className="flex flex-col items-center gap-0.5 xs:gap-1">
                   <i className="fas fa-lock text-base xs:text-lg text-purple-400"></i>
                   <span
-                    className={`font-semibold ${isDark ? "text-slate-300" : "text-slate-700"
-                      }`}
+                    className={`font-semibold ${
+                      isDark ? "text-slate-300" : "text-slate-700"
+                    }`}
                   >
                     Secure
                   </span>
@@ -918,16 +1178,18 @@ export default function ToolSection({ toolRef }) {
                 <div className="flex flex-col items-center gap-0.5 xs:gap-1">
                   <i className="fas fa-star text-base xs:text-lg text-pink-400"></i>
                   <span
-                    className={`font-semibold ${isDark ? "text-slate-300" : "text-slate-700"
-                      }`}
+                    className={`font-semibold ${
+                      isDark ? "text-slate-300" : "text-slate-700"
+                    }`}
                   >
                     Free
                   </span>
                 </div>
               </div>
               <p
-                className={`text-[10px] xs:text-xs text-center ${isDark ? "text-slate-500" : "text-slate-500"
-                  }`}
+                className={`text-[10px] xs:text-xs text-center ${
+                  isDark ? "text-slate-500" : "text-slate-500"
+                }`}
               >
                 No signups needed • Supports 1000+ sites • Powered by yt-dlp
               </p>

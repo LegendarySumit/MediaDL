@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
 export default function ReCaptcha({ onVerify, siteKey }) {
   useEffect(() => {
     // Load reCAPTCHA script
     if (!siteKey) return;
 
-    const script = document.createElement('script');
+    const script = document.createElement("script");
     script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
     script.async = true;
     document.body.appendChild(script);
@@ -21,7 +21,7 @@ export default function ReCaptcha({ onVerify, siteKey }) {
     };
   }, [siteKey]);
 
-  const executeRecaptcha = async (action = 'submit') => {
+  const executeRecaptcha = async (action = "submit") => {
     if (!siteKey || !window.grecaptcha) {
       // If reCAPTCHA is not configured, return null (bypass)
       return null;
@@ -35,7 +35,7 @@ export default function ReCaptcha({ onVerify, siteKey }) {
       }
       return token;
     } catch (error) {
-      console.error('reCAPTCHA error:', error);
+      console.error("reCAPTCHA error:", error);
       return null;
     }
   };
@@ -48,10 +48,16 @@ export function useReCaptcha() {
   const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-  const isTestRuntime = process.env.NODE_ENV === 'test' || process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === 'true';
+  const isTestRuntime =
+    process.env.NODE_ENV === "test" ||
+    process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === "true";
   const initialProvider = isTestRuntime
-    ? 'none'
-    : (turnstileSiteKey ? 'turnstile' : (recaptchaSiteKey ? 'recaptcha' : 'none'));
+    ? "none"
+    : turnstileSiteKey
+      ? "turnstile"
+      : recaptchaSiteKey
+        ? "recaptcha"
+        : "none";
 
   const [isReady, setIsReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState(null);
@@ -68,19 +74,21 @@ export function useReCaptcha() {
   }, [initialProvider]);
 
   useEffect(() => {
-    if (provider === 'none') {
+    if (provider === "none") {
       setIsReady(false);
       return;
     }
 
-    if (provider === 'recaptcha') {
-      const existingScript = document.querySelector('script[data-recaptcha="v3"]');
+    if (provider === "recaptcha") {
+      const existingScript = document.querySelector(
+        'script[data-recaptcha="v3"]',
+      );
       if (!existingScript) {
-        const script = document.createElement('script');
+        const script = document.createElement("script");
         script.src = `https://www.google.com/recaptcha/api.js?render=${recaptchaSiteKey}`;
         script.async = true;
         script.defer = true;
-        script.dataset.recaptcha = 'v3';
+        script.dataset.recaptcha = "v3";
         script.onload = () => setIsReady(true);
         script.onerror = () => setIsReady(false);
         document.body.appendChild(script);
@@ -93,13 +101,16 @@ export function useReCaptcha() {
       return;
     }
 
-    const existingScript = document.querySelector('script[data-turnstile="v0"]');
+    const existingScript = document.querySelector(
+      'script[data-turnstile="v0"]',
+    );
     if (!existingScript) {
-      const script = document.createElement('script');
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      const script = document.createElement("script");
+      script.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
       script.async = true;
       script.defer = true;
-      script.dataset.turnstile = 'v0';
+      script.dataset.turnstile = "v0";
       script.onload = () => setIsReady(true);
       script.onerror = () => setIsReady(false);
       document.body.appendChild(script);
@@ -112,7 +123,7 @@ export function useReCaptcha() {
   }, [provider, recaptchaSiteKey]);
 
   const mountTurnstile = (containerId, onToken) => {
-    if (provider !== 'turnstile' || !window.turnstile || !turnstileSiteKey) {
+    if (provider !== "turnstile" || !window.turnstile || !turnstileSiteKey) {
       return;
     }
 
@@ -122,28 +133,28 @@ export function useReCaptcha() {
 
     const widgetId = window.turnstile.render(`#${containerId}`, {
       sitekey: turnstileSiteKey,
-      theme: 'auto',
-      size: 'flexible',
+      theme: "auto",
+      size: "flexible",
       callback: (token) => {
         setLastErrorCode(null);
         setTurnstileToken(token);
         if (onToken) onToken(token);
       },
-      'expired-callback': () => {
+      "expired-callback": () => {
         setTurnstileToken(null);
         if (onToken) onToken(null);
       },
-      'error-callback': (errorCode) => {
-        const normalizedCode = String(errorCode || 'turnstile-widget-error');
+      "error-callback": (errorCode) => {
+        const normalizedCode = String(errorCode || "turnstile-widget-error");
         setLastErrorCode(normalizedCode);
         setTurnstileToken(null);
         if (onToken) onToken(null);
 
         // Fallback when Turnstile is misconfigured for this host (e.g. 600010)
         if (recaptchaSiteKey) {
-          setProvider('recaptcha');
+          setProvider("recaptcha");
         } else {
-          setProvider('none');
+          setProvider("none");
         }
       },
     });
@@ -152,43 +163,56 @@ export function useReCaptcha() {
   };
 
   const resetTurnstile = () => {
-    if (provider !== 'turnstile' || !window.turnstile || turnstileWidgetIdRef.current === null) {
-      setTurnstileToken(null);
+    setTurnstileToken(null);
+    if (
+      provider !== "turnstile" ||
+      !window.turnstile ||
+      turnstileWidgetIdRef.current === null
+    ) {
       return;
     }
-    window.turnstile.reset(turnstileWidgetIdRef.current);
-    setTurnstileToken(null);
+    try {
+      window.turnstile.reset(turnstileWidgetIdRef.current);
+    } catch (error) {
+      // Widget may have been removed from DOM, silently ignore
+      console.debug(
+        "Turnstile reset failed (widget likely removed):",
+        error.message,
+      );
+    }
   };
 
-  const executeRecaptcha = async (action = 'submit') => {
-    if (provider === 'none') {
+  const executeRecaptcha = async (action = "submit") => {
+    if (provider === "none") {
       // reCAPTCHA not configured, bypass
       return null;
     }
 
-    if (provider === 'turnstile') {
+    if (provider === "turnstile") {
       return turnstileToken;
     }
 
     if (!window.grecaptcha) {
-      console.warn('reCAPTCHA not loaded yet');
+      console.warn("reCAPTCHA not loaded yet");
       return null;
     }
 
     try {
       await window.grecaptcha.ready();
-      const token = await window.grecaptcha.execute(recaptchaSiteKey, { action });
+      const token = await window.grecaptcha.execute(recaptchaSiteKey, {
+        action,
+      });
       setIsReady(true);
       return token;
     } catch (error) {
-      console.error('reCAPTCHA error:', error);
+      console.error("reCAPTCHA error:", error);
       return null;
     }
   };
 
   return {
     executeRecaptcha,
-    isEnabled: provider !== 'none',
+    isEnabled: provider !== "none",
     isReady,
     provider,
     lastErrorCode,
