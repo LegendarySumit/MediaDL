@@ -22,7 +22,7 @@ const LOGS_DIR = path.join(__dirname, "logs");
 const QUEUE_NAME = "media-downloads";
 const DOWNLOAD_TTL_MINUTES = Number(process.env.DOWNLOAD_TTL_MINUTES || 60);
 // Note: YTDLP_INFO_TIMEOUT_MS is no longer used (see runYtDlpFast)
-const YTDLP_INFO_TIMEOUT_MS = Number(process.env.YTDLP_INFO_TIMEOUT_MS || 5000);
+const YTDLP_INFO_TIMEOUT_MS = Number(process.env.YTDLP_INFO_TIMEOUT_MS || 15000);
 const YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS = Number(
   process.env.YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS || 120000,
 );
@@ -140,10 +140,6 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests. Please try again later." },
-  keyGenerator: (req, res) => {
-    // Use X-Forwarded-For if behind proxy, otherwise use IP
-    return req.ip || req.connection.remoteAddress || "unknown";
-  },
   skip: (req, res) => {
     // Skip rate limit for health checks
     return req.path === "/health";
@@ -156,9 +152,6 @@ const downloadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Download limit exceeded. Try again in one hour." },
-  keyGenerator: (req, res) => {
-    return req.ip || req.connection.remoteAddress || "unknown";
-  },
 });
 
 app.use("/api", apiLimiter);
