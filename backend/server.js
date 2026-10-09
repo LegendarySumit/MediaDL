@@ -109,12 +109,25 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 
+// Trust proxy headers (important for Render and other reverse proxies)
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests. Please try again later." },
+  keyGenerator: (req, res) => {
+    // Use X-Forwarded-For if behind proxy, otherwise use IP
+    return req.ip || req.connection.remoteAddress || "unknown";
+  },
+  skip: (req, res) => {
+    // Skip rate limit for health checks
+    return req.path === "/health";
+  },
 });
 
 const downloadLimiter = rateLimit({
@@ -123,6 +136,9 @@ const downloadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Download limit exceeded. Try again in one hour." },
+  keyGenerator: (req, res) => {
+    return req.ip || req.connection.remoteAddress || "unknown";
+  },
 });
 
 app.use("/api", apiLimiter);
@@ -190,27 +206,29 @@ function materializeCookieStringToFile(cookieText, label) {
 
 function buildCookiePool() {
   const pool = [];
-  const configuredCookiePath = process.env.YOUTUBE_COOKIES_PATH
-    ? path.resolve(process.cwd(), process.env.YOUTUBE_COOKIES_PATH)
-    : null;
-  const repoCookiePath = path.join(__dirname, "cookies.txt");
-  const downloadsPath = path.join(os.homedir(), "Downloads", "cookies.txt");
+  
+  // Render mounts secret files at root, so check multiple locations
+  const possiblePaths = [
+    path.join(__dirname, "cookies.txt"),              // /app/backend/cookies.txt
+    "/app/cookies.txt",                                // /app/cookies.txt (Render secret files root)
+    process.env.YOUTUBE_COOKIES_PATH ? path.resolve(process.cwd(), process.env.YOUTUBE_COOKIES_PATH) : null,
+    path.join(os.homedir(), "Downloads", "cookies.txt")
+  ].filter(Boolean);
 
-  if (configuredCookiePath && fs.existsSync(configuredCookiePath)) {
-    pool.push(configuredCookiePath);
-  }
+  logger.info({ possiblePaths }, "Checking cookie locations");
 
-  if (fs.existsSync(repoCookiePath)) {
-    pool.push(repoCookiePath);
-  }
-
-  if (fs.existsSync(downloadsPath)) {
-    pool.push(downloadsPath);
+  for (const cookiePath of possiblePaths) {
+    if (fs.existsSync(cookiePath)) {
+      logger.info({ cookiePath }, "Found cookies file");
+      pool.push(cookiePath);
+      break; // Use first found
+    }
   }
 
   if (process.env.YOUTUBE_COOKIES) {
     try {
       const single = decodeMaybeBase64(process.env.YOUTUBE_COOKIES);
+      logger.info("Creating cookie file from YOUTUBE_COOKIES env");
       pool.push(materializeCookieStringToFile(single, "single"));
     } catch (error) {
       logger.error({ err: error }, "Failed to materialize YOUTUBE_COOKIES");
@@ -221,6 +239,7 @@ function buildCookiePool() {
   cookiePoolRaw.forEach((entry, index) => {
     try {
       const content = decodeMaybeBase64(entry);
+      logger.info({ index }, "Creating cookie file from pool");
       pool.push(materializeCookieStringToFile(content, `pool_${index}`));
     } catch (error) {
       logger.error(
