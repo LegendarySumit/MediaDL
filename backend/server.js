@@ -207,35 +207,69 @@ function materializeCookieStringToFile(cookieText, label) {
 function buildCookiePool() {
   const pool = [];
   
-  // Render mounts secret files at root, so check multiple locations
+  // List all files in critical directories for debugging
+  const debugDirs = ["/app", "/app/backend", process.cwd(), __dirname];
+  
+  for (const dir of debugDirs) {
+    try {
+      if (fs.existsSync(dir)) {
+        const files = fs.readdirSync(dir);
+        logger.info({ dir, files }, "📂 Directory listing");
+      }
+    } catch (err) {
+      logger.debug({ dir, error: err.message }, "Cannot read directory");
+    }
+  }
+
+  // Check all possible locations for cookies.txt
   const possiblePaths = [
+    "/app/cookies.txt",                                // Render secret file (absolute)
     path.join(__dirname, "cookies.txt"),              // /app/backend/cookies.txt
-    "/app/cookies.txt",                                // /app/cookies.txt (Render secret files root)
+    "/cookies.txt",                                    // Root
     process.env.YOUTUBE_COOKIES_PATH ? path.resolve(process.cwd(), process.env.YOUTUBE_COOKIES_PATH) : null,
     path.join(os.homedir(), "Downloads", "cookies.txt")
   ].filter(Boolean);
 
-  logger.info({ possiblePaths }, "Checking cookie locations");
+  logger.info({ possiblePaths }, "🔍 Checking cookie locations");
 
+  let foundPath = null;
   for (const cookiePath of possiblePaths) {
-    if (fs.existsSync(cookiePath)) {
-      logger.info({ cookiePath }, "Found cookies file");
-      pool.push(cookiePath);
-      break; // Use first found
+    try {
+      if (fs.existsSync(cookiePath)) {
+        const stat = fs.statSync(cookiePath);
+        logger.info({ 
+          cookiePath, 
+          size: stat.size,
+          isFile: stat.isFile()
+        }, "✅ Found cookies file");
+        pool.push(cookiePath);
+        foundPath = cookiePath;
+        break;
+      }
+    } catch (err) {
+      logger.debug({ cookiePath, error: err.message }, "Error checking path");
     }
+  }
+
+  if (!foundPath) {
+    logger.warn({ possiblePaths }, "❌ No cookies.txt file found in any location");
   }
 
   if (process.env.YOUTUBE_COOKIES) {
     try {
+      logger.info("📝 Processing YOUTUBE_COOKIES environment variable");
       const single = decodeMaybeBase64(process.env.YOUTUBE_COOKIES);
-      logger.info("Creating cookie file from YOUTUBE_COOKIES env");
+      logger.info("✅ Creating cookie file from YOUTUBE_COOKIES env");
       pool.push(materializeCookieStringToFile(single, "single"));
     } catch (error) {
-      logger.error({ err: error }, "Failed to materialize YOUTUBE_COOKIES");
+      logger.error({ err: error }, "❌ Failed to materialize YOUTUBE_COOKIES");
     }
   }
 
   const cookiePoolRaw = splitPool(process.env.YOUTUBE_COOKIES_POOL || "");
+  if (cookiePoolRaw.length > 0) {
+    logger.info({ count: cookiePoolRaw.length }, "Processing YOUTUBE_COOKIES_POOL");
+  }
   cookiePoolRaw.forEach((entry, index) => {
     try {
       const content = decodeMaybeBase64(entry);
@@ -263,6 +297,10 @@ function buildProxyPool() {
 
 const proxyPool = buildProxyPool();
 const cookiePool = buildCookiePool();
+logger.info({ cookiePoolCount: cookiePool.length }, "Cookie pool initialized");
+if (cookiePool.length === 0) {
+  logger.warn("⚠️ NO COOKIES LOADED! Downloads for Instagram/Reddit may fail.");
+}
 let proxyIndex = 0;
 let cookieIndex = 0;
 
