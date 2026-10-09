@@ -69,6 +69,26 @@ const logger = pino(
 );
 
 app.use(pinoHttp({ logger }));
+
+// ============ STARTUP DIAGNOSTICS ============
+logger.info("🚀 Server starting up...");
+logger.info({ __dirname, cwd: process.cwd(), home: os.homedir() }, "📍 Path information");
+
+// Log directory contents
+const debugDirs = ["/app", path.join(__dirname), process.cwd()];
+for (const dir of debugDirs) {
+  try {
+    if (fs.existsSync(dir)) {
+      const files = fs.readdirSync(dir);
+      logger.info({ dir, files: files.slice(0, 20) }, "📂 Directory contents");
+    }
+  } catch (err) {
+    logger.debug({ dir, error: err.message }, "Cannot read directory");
+  }
+}
+
+// ============ END STARTUP DIAGNOSTICS ============
+
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -207,25 +227,13 @@ function materializeCookieStringToFile(cookieText, label) {
 function buildCookiePool() {
   const pool = [];
   
-  // List all files in critical directories for debugging
-  const debugDirs = ["/app", "/app/backend", process.cwd(), __dirname];
-  
-  for (const dir of debugDirs) {
-    try {
-      if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir);
-        logger.info({ dir, files }, "📂 Directory listing");
-      }
-    } catch (err) {
-      logger.debug({ dir, error: err.message }, "Cannot read directory");
-    }
-  }
-
+  // Render mounts secret files at /etc/secrets/<filename>
   // Check all possible locations for cookies.txt
   const possiblePaths = [
-    "/app/cookies.txt",                                // Render secret file (absolute)
-    path.join(__dirname, "cookies.txt"),              // /app/backend/cookies.txt
-    "/cookies.txt",                                    // Root
+    "/etc/secrets/cookies.txt",                       // Render secret file (PRIMARY)
+    path.join(__dirname, "cookies.txt"),              // /app/backend/cookies.txt (local dev)
+    "/app/cookies.txt",                               // App root
+    "/cookies.txt",                                   // Root
     process.env.YOUTUBE_COOKIES_PATH ? path.resolve(process.cwd(), process.env.YOUTUBE_COOKIES_PATH) : null,
     path.join(os.homedir(), "Downloads", "cookies.txt")
   ].filter(Boolean);
