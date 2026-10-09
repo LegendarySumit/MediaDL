@@ -227,10 +227,28 @@ function materializeCookieStringToFile(cookieText, label) {
 function buildCookiePool() {
   const pool = [];
   
-  // Render mounts secret files at /etc/secrets/<filename>
+  // Render mounts secret files at /etc/secrets/<filename> but they're READ-ONLY
+  // So we need to copy them to a writable location first
+  const secretCookiePath = "/etc/secrets/cookies.txt";
+  const writableCookiePath = path.join(os.tmpdir(), "cookies_writable.txt");
+  
+  // Copy read-only secret file to writable temp location
+  if (fs.existsSync(secretCookiePath) && !fs.existsSync(writableCookiePath)) {
+    try {
+      const content = fs.readFileSync(secretCookiePath, "utf8");
+      fs.writeFileSync(writableCookiePath, content, "utf8");
+      logger.info({ secretCookiePath, writableCookiePath }, "✅ Copied read-only secret cookies to writable temp location");
+      pool.push(writableCookiePath);
+    } catch (err) {
+      logger.error({ err, secretCookiePath }, "❌ Failed to copy secret cookies");
+    }
+  } else if (fs.existsSync(secretCookiePath)) {
+    // Already copied, use the writable version
+    pool.push(writableCookiePath);
+  }
+  
   // Check all possible locations for cookies.txt
   const possiblePaths = [
-    "/etc/secrets/cookies.txt",                       // Render secret file (PRIMARY)
     path.join(__dirname, "cookies.txt"),              // /app/backend/cookies.txt (local dev)
     "/app/cookies.txt",                               // App root
     "/cookies.txt",                                   // Root
@@ -238,9 +256,8 @@ function buildCookiePool() {
     path.join(os.homedir(), "Downloads", "cookies.txt")
   ].filter(Boolean);
 
-  logger.info({ possiblePaths }, "🔍 Checking cookie locations");
+  logger.info({ possiblePaths }, "🔍 Checking additional cookie locations");
 
-  let foundPath = null;
   for (const cookiePath of possiblePaths) {
     try {
       if (fs.existsSync(cookiePath)) {
@@ -251,7 +268,6 @@ function buildCookiePool() {
           isFile: stat.isFile()
         }, "✅ Found cookies file");
         pool.push(cookiePath);
-        foundPath = cookiePath;
         break;
       }
     } catch (err) {
@@ -259,8 +275,8 @@ function buildCookiePool() {
     }
   }
 
-  if (!foundPath) {
-    logger.warn({ possiblePaths }, "❌ No cookies.txt file found in any location");
+  if (pool.length === 0) {
+    logger.warn({ possiblePaths }, "❌ No cookies files found in any location");
   }
 
   if (process.env.YOUTUBE_COOKIES) {
