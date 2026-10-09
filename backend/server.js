@@ -676,12 +676,16 @@ function getAttemptConfigs() {
   const attempts = [];
   const clients = ["android", "ios", "mweb", "web", "tv"];
   
-  // First attempt: Try browser cookies (for Instagram, Reddit, Facebook, etc.)
+  // On Render or in production, don't use browser cookies (no Chrome available)
+  // Start with file-based cookies instead
+  const useBrowserCookies = process.env.NODE_ENV !== "production" && getNextCookieFile() === null;
+  
+  // First attempt: Try with cookieFile (or browser cookies in dev if no file)
   attempts.push({
     playerClient: "web",
     proxy: getNextProxy(),
     cookieFile: getNextCookieFile(),
-    useBrowserCookies: true, // Enable browser cookie extraction
+    useBrowserCookies: useBrowserCookies, // Only on dev without cookie file
   });
   
   // Regular attempts with cookie files
