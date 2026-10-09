@@ -134,6 +134,13 @@ function getYtDlpBinary() {
 
 function isFfmpegAvailable() {
   try {
+    // Check if FFMPEG_PATH is set in environment
+    const ffmpegPath = process.env.FFMPEG_PATH;
+    if (ffmpegPath) {
+      execSync(`"${ffmpegPath}" -version`, { stdio: "ignore", timeout: 5000 });
+      return true;
+    }
+    // Fallback to system ffmpeg
     execSync("ffmpeg -version", { stdio: "ignore", timeout: 5000 });
     return true;
   } catch {
@@ -603,11 +610,22 @@ function emitJobUpdate(jobId, patch) {
 function getAttemptConfigs() {
   const attempts = [];
   const clients = ["android", "ios", "mweb", "web", "tv"];
+  
+  // First attempt: Try browser cookies (for Instagram, Reddit, Facebook, etc.)
+  attempts.push({
+    playerClient: "web",
+    proxy: getNextProxy(),
+    cookieFile: getNextCookieFile(),
+    useBrowserCookies: true, // Enable browser cookie extraction
+  });
+  
+  // Regular attempts with cookie files
   for (let i = 0; i < clients.length; i += 1) {
     attempts.push({
       playerClient: clients[i],
       proxy: getNextProxy(),
       cookieFile: getNextCookieFile(),
+      useBrowserCookies: false,
     });
   }
 
@@ -616,6 +634,7 @@ function getAttemptConfigs() {
     playerClient: "web",
     proxy: null,
     cookieFile: getNextCookieFile(),
+    useBrowserCookies: false,
   });
 
   return attempts;
@@ -638,8 +657,26 @@ function buildYtArgs(base, options) {
   if (options.proxy) {
     args.push("--proxy", options.proxy);
   }
+  
+  // Add cookies from file (if provided)
   if (options.cookieFile) {
     args.push("--cookies", options.cookieFile);
+  }
+  
+  // Add browser cookies support for platforms requiring fresh auth (Instagram, Reddit, Facebook, Twitter)
+  // This automatically extracts cookies from browser, useful when cookie files are stale
+  if (options.useBrowserCookies) {
+    const browsers = ["chrome", "firefox"]; // Priority order
+    for (const browser of browsers) {
+      try {
+        // Just add the flag, yt-dlp will handle extraction
+        args.push("--cookies-from-browser", browser);
+        logger.info({ browser }, "Using browser cookies for extraction");
+        break; // Use first available browser
+      } catch (e) {
+        // Try next browser
+      }
+    }
   }
 
   return args;
@@ -888,6 +925,9 @@ async function processDownloadJob(job) {
     formatId === "bestaudio/best" ||
     String(formatId || "").startsWith("bestaudio");
   const desiredExt = isAudioOnly ? "mp3" : "mp4";
+  
+  // Debug log
+  logger.info({ jobId: job.id, formatId, isAudioOnly, desiredExt }, "Processing download job");
 
   emitJobUpdate(job.id, {
     status: "processing",
@@ -924,10 +964,18 @@ async function processDownloadJob(job) {
       attempt,
     );
 
-    if (isAudioOnly && ffmpeg) {
+    // Add FFmpeg location if custom path is set
+    if (process.env.FFMPEG_PATH) {
+      args.push("--ffmpeg-location", path.dirname(process.env.FFMPEG_PATH));
+    }
+
+    if (isAudioOnly) {
+      // Always extract audio if audio-only format is requested
       args.push("-x", "--audio-format", "mp3", "--audio-quality", "0");
     } else if (ffmpeg) {
+      // Force FFmpeg merge and specify output format for video
       args.push("--merge-output-format", "mp4");
+      args.push("--postprocessor-args", "ffmpeg:-c copy");
     }
 
     args.push(url);
@@ -1318,6 +1366,7 @@ app.get("/api/info", async (req, res) => {
     const seen = new Set();
     const formats = [];
 
+    // Extract audio-only streams
     const audioStreams = rawFormats
       .filter(
         (f) =>
@@ -1329,10 +1378,12 @@ app.get("/api/info", async (req, res) => {
       ? audioStreams[0].format_id
       : "bestaudio";
 
+    // Extract video streams (with or without audio)
     const videoStreams = rawFormats
       .filter((f) => f.vcodec && f.vcodec !== "none" && f.height)
       .sort((a, b) => (b.height || 0) - (a.height || 0));
 
+    // Process video formats with clear labeling
     for (const f of videoStreams) {
       const height = f.height || 0;
       const key = `${height}p_${f.ext}`;
@@ -1344,33 +1395,60 @@ app.get("/api/info", async (req, res) => {
       const size = f.filesize ? ` (~${formatBytes(f.filesize)})` : "";
 
       if (hasAudio) {
+        // Format already contains both video and audio
         formats.push({
           format_id: f.format_id,
           ext: f.ext,
           height,
-          label: `${height}p${fps} [${f.ext}] Video+Audio${size}`,
+          label: `📹 ${height}p Video (with audio)${fps}${size}`,
           needsMerge: false,
         });
       } else if (ffmpeg) {
+        // Video only, but can merge with audio using FFmpeg
         formats.push({
           format_id: `${f.format_id}+${bestAudioId}`,
           ext: "mp4",
           height,
-          label: `${height}p${fps} [mp4] Merged HD${size}`,
+          label: `📹 ${height}p Video (best quality)${fps}${size}`,
           needsMerge: true,
         });
       } else {
+        // Video only, no FFmpeg to merge
         formats.push({
           format_id: f.format_id,
           ext: f.ext,
           height,
-          label: `${height}p${fps} [${f.ext}] Video only (no audio - install ffmpeg)${size}`,
+          label: `📹 ${height}p Video (no audio - FFmpeg not installed)${fps}${size}`,
           needsMerge: false,
         });
       }
     }
 
+    // Add top 3 audio-only options
+    for (let i = 0; i < Math.min(3, audioStreams.length); i++) {
+      const audio = audioStreams[i];
+      const bitrate = audio.tbr ? `${Math.round(audio.tbr)}kbps` : "unknown bitrate";
+      const size = audio.filesize ? ` (~${formatBytes(audio.filesize)})` : "";
+      formats.push({
+        format_id: audio.format_id,
+        ext: audio.ext || "m4a",
+        height: 0,
+        label: `🎵 Audio Only (${bitrate})${size}`,
+        needsMerge: false,
+      });
+    }
+
     const presets = buildPresetFormats(ffmpeg);
+    
+    // Remove video formats that are already covered by presets (1080p, 720p, 480p)
+    // Keep only unusual resolutions and audio-only formats
+    const presetResolutions = [1080, 720, 480];
+    const nonDuplicateFormats = formats.filter(f => {
+      // Keep all audio formats (height === 0)
+      if (f.height === 0) return true;
+      // Keep video formats that are NOT standard preset resolutions
+      return !presetResolutions.includes(f.height);
+    });
 
     return res.json({
       title: info.title,
@@ -1385,7 +1463,7 @@ app.get("/api/info", async (req, res) => {
       webpage_url: info.webpage_url || url,
       extractor: info.extractor_key || info.extractor || "Unknown",
       ffmpeg,
-      formats: [...presets, ...formats.slice(0, 18)],
+      formats: [...presets, ...nonDuplicateFormats.slice(0, 50)],
     });
   } catch (error) {
     logger.error({ err: error, platform }, "Failed to fetch media info");
