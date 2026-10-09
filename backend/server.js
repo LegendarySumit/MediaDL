@@ -22,7 +22,7 @@ const LOGS_DIR = path.join(__dirname, "logs");
 const QUEUE_NAME = "media-downloads";
 const DOWNLOAD_TTL_MINUTES = Number(process.env.DOWNLOAD_TTL_MINUTES || 60);
 // Note: YTDLP_INFO_TIMEOUT_MS is no longer used (see runYtDlpFast)
-const YTDLP_INFO_TIMEOUT_MS = Number(process.env.YTDLP_INFO_TIMEOUT_MS || 15000);
+const YTDLP_INFO_TIMEOUT_MS = Number(process.env.YTDLP_INFO_TIMEOUT_MS || 30000);
 const YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS = Number(
   process.env.YTDLP_DOWNLOAD_ATTEMPT_TIMEOUT_MS || 120000,
 );
