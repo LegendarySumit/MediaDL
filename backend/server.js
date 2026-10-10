@@ -741,6 +741,19 @@ function buildYtArgs(base, options) {
     args.push("--cookies", options.cookieFile);
   }
   
+  // Add Reddit authentication if credentials are available
+  // Reddit validates session cookies against the original IP they were created from
+  // Using credentials forces fresh authentication on current IP (Render), bypassing IP mismatch issues
+  if (options.url && options.url.includes("reddit.com")) {
+    if (process.env.REDDIT_USERNAME && process.env.REDDIT_PASSWORD) {
+      args.push("--username", process.env.REDDIT_USERNAME);
+      args.push("--password", process.env.REDDIT_PASSWORD);
+      logger.info("Using Reddit credentials for fresh IP-specific authentication");
+    } else {
+      logger.warn("Reddit URL detected but no Reddit credentials configured. Download may fail with 403 if cookies are IP-locked to different location.");
+    }
+  }
+  
   // Add browser cookies support for platforms requiring fresh auth (Instagram, Reddit, Facebook, Twitter)
   // This automatically extracts cookies from browser, useful when cookie files are stale
   if (options.useBrowserCookies) {
